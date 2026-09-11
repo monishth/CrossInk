@@ -8,20 +8,30 @@
 #include <ctime>
 #include <utility>
 
+#include "BookOrbitAnnotationModel.h"
+#include "BookOrbitAnnotationSync.h"
+#include "BookOrbitBookmarkModel.h"
+#include "BookOrbitBookmarkSync.h"
+#include "BookOrbitCapabilities.h"
 #include "BookOrbitClient.h"
 #include "BookOrbitError.h"
 #include "BookOrbitMatch.h"
 #include "BookOrbitSyncState.h"
 #include "BookStatePhase.h"
 #include "BookStateStore.h"
+#include "CrossPointState.h"
+#include "Epub.h"
 #include "MappedInputManager.h"
 #include "PageStatsCodec.h"
 #include "ReadingEventLog.h"
+#include "activities/reader/EpubReaderUtils.h"
+#include "bookorbit/CrossInkAnnotationSource.h"
 #include "components/TouchHeaderBackButton.h"
 #include "components/UITheme.h"
 #include "network/BookOrbitBlobStore.h"
 #include "network/BookOrbitCredentialStore.h"
 #include "network/BookOrbitDocumentHasher.h"
+#include "network/BookOrbitProgressPhase.h"
 
 #ifndef SIMULATOR
 #include "network/BookOrbitHttpTransport.h"
@@ -71,6 +81,19 @@ const char* BookOrbitSyncActivity::phaseLabel(const bookorbit::SyncPhase phase) 
   return "?";
 }
 
+void BookOrbitSyncActivity::ensureEpubLoaded() {
+  if (epub) return;
+  epub = std::make_shared<Epub>(epubPath, "/.crosspoint");
+  epub->setupCacheDir();
+  // Metadata only: progress mapping and annotation collection need the spine
+  // and x-locations, not CSS, and rebuilding a missing cache here would stall
+  // the sync for minutes.
+  if (!epub->load(false, true, Epub::XLocationLoadMode::Immediate, true)) {
+    LOG_ERR(kModule, "could not load %s for sync", epubPath.c_str());
+    epub.reset();
+  }
+}
+
 void BookOrbitSyncActivity::stepOnePhase() {
   if (finished) return;
 
@@ -95,6 +118,11 @@ void BookOrbitSyncActivity::stepOnePhase() {
   if (phase == bookorbit::SyncPhase::Done) {
     if (outbox.hadErrors()) {
       statusMessage = tr(STR_BOOKORBIT_SYNC_FAILED);
+    } else if (degradedLanding) {
+      // An approximate landing outranks "complete": the user needs to know the
+      // position was resolved by percentage, not exactly. Setting it during the
+      // phase would be overwritten by this message, so it is carried here.
+      statusMessage = tr(STR_BOOKORBIT_APPROXIMATE_POSITION);
     } else if (skippedPhases > 0) {
       // Never report a clean sync when phases did not actually run.
       statusMessage = tr(STR_BOOKORBIT_SYNC_PARTIAL);
@@ -215,13 +243,105 @@ void BookOrbitSyncActivity::stepOnePhase() {
       break;
     }
 
-    default:
-      // Stats, Progress, Annotations and Bookmarks each need a device-side
-      // source (the event log, the reader's live position, BookmarkStore and
-      // ClippingStore) that is not wired into this activity yet. Record them as
-      // not-run rather than acknowledging success we did not earn: the chain
-      // still advances so later phases get their turn, but the screen reports a
-      // partial sync rather than "Sync complete".
+    case bookorbit::SyncPhase::Progress: {
+      if (!matched) {
+        phaseRan = false;
+        break;
+      }
+      ensureEpubLoaded();
+      if (!epub) {
+        phaseRan = false;
+        break;
+      }
+
+      // The reader persists its position per book; read it back rather than
+      // inventing one, so a push reflects exactly where the user actually is.
+      EpubReaderUtils::Progress saved;
+      if (!EpubReaderUtils::loadProgress(*epub, saved, kModule)) {
+        phaseRan = false;
+        break;
+      }
+
+      int spineIndex = saved.spineIndex;
+      if (spineIndex < 0 || spineIndex >= epub->getSpineItemsCount()) spineIndex = 0;
+
+      CrossPointPosition here = {spineIndex, saved.pageNumber, saved.hasPageCount ? std::max(1, saved.pageCount) : 1};
+      if (saved.hasVisibleTextOffset) {
+        here.visibleTextOffset = saved.visibleTextOffset;
+        here.hasVisibleTextOffset = true;
+      }
+
+      const float localPercentage = epub->calculateSizeProgress(
+          spineIndex,
+          here.totalPages > 0 ? static_cast<float>(here.pageNumber) / static_cast<float>(here.totalPages) : 0.0f);
+
+      BookOrbitProgressPhase progress(client, epub, identity.deviceModel, identity.deviceId, nowUnix);
+
+      // Pull first: an inbound position is only useful before we overwrite it.
+      bookorbit::ResolvedProgress resolved;
+      if (progress.pull(bookHash, localPercentage, resolved)) {
+        // Never apply a degraded landing silently — say so on screen.
+        if (resolved.jumpNeedsNotice) {
+          LOG_INF(kModule, "degraded landing: remote %.4f local %.4f", static_cast<double>(resolved.percentage),
+                  static_cast<double>(localPercentage));
+          degradedLanding = true;
+        }
+      }
+
+      if (!progress.push(bookHash, here, localPercentage)) {
+        result = bookorbit::Error{bookorbit::Status::ServerError, 0};
+      }
+      break;
+    }
+
+    case bookorbit::SyncPhase::Annotations: {
+      if (!matched) {
+        phaseRan = false;
+        break;
+      }
+      ensureEpubLoaded();
+      if (!epub) {
+        phaseRan = false;
+        break;
+      }
+
+      std::vector<bookorbit::Annotation> raw;
+      collectBookOrbitAnnotations(epub, raw);
+      const auto local = bookorbit::normalizeAnnotations(raw);
+
+      CrossInkAnnotationApplier applier(epub, false);
+      auto& book = syncState.findOrCreate(bookHash);
+      bookorbit::ExchangeOutcome outcome;
+      result = bookorbit::exchangeAnnotations(client, book, bookHash, local, applier, nowUnix, outcome);
+      break;
+    }
+
+    case bookorbit::SyncPhase::Bookmarks: {
+      if (!matched) {
+        phaseRan = false;
+        break;
+      }
+      ensureEpubLoaded();
+      if (!epub) {
+        phaseRan = false;
+        break;
+      }
+
+      std::vector<bookorbit::Bookmark> raw;
+      collectBookOrbitBookmarks(epub, raw);
+      const auto local = bookorbit::normalizeBookmarks(raw);
+
+      CrossInkAnnotationApplier applier(epub, true);
+      auto& book = syncState.findOrCreate(bookHash);
+      bookorbit::CapabilityCache capabilities;
+      bookorbit::ExchangeOutcome outcome;
+      result = bookorbit::exchangeBookmarks(client, capabilities, book, bookHash, local, applier, nowUnix, outcome);
+      break;
+    }
+
+    case bookorbit::SyncPhase::Done:
+      // Handled above; listed so adding a phase to SyncPhase produces a
+      // -Wswitch warning here rather than silently counting as skipped.
       phaseRan = false;
       break;
   }

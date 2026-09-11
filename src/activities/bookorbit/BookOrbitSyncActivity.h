@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 
 #include "BookOrbitOutbox.h"
@@ -16,6 +17,8 @@
  * blocking call, so the render task keeps servicing the screen and the user can
  * still press Back.
  */
+class Epub;
+
 class BookOrbitSyncActivity final : public Activity {
  public:
   static constexpr const char* NAME = "BookOrbitSync";
@@ -34,9 +37,16 @@ class BookOrbitSyncActivity final : public Activity {
   bookorbit::SyncOutbox outbox;
   bool finished = false;
   bool started = false;
-  bool matched = false;   // the server acknowledged this hash
-  int skippedPhases = 0;  // phases with no device-side source wired yet
+  bool matched = false;          // the server acknowledged this hash
+  bool degradedLanding = false;  // a position resolved only by percentage
+  int skippedPhases = 0;         // phases with no device-side source wired yet
   std::string statusMessage;
+
+  // Metadata-only load, shared by the progress and annotation phases. Null
+  // until first needed: the phases that do not touch the book never pay for it.
+  void ensureEpubLoaded();
+
+  std::shared_ptr<Epub> epub;
 
   void stepOnePhase();
   const char* phaseLabel(bookorbit::SyncPhase phase) const;
