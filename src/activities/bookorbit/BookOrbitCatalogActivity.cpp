@@ -18,11 +18,14 @@
 
 #ifdef SIMULATOR
 #include "network/SimulatorHttpTransport.h"
+#include "network/SimulatorStreamDownloader.h"
 using BookOrbitTransport = SimulatorHttpTransport;
+using BookOrbitDownloader = SimulatorStreamDownloader;
 #else
 #include "network/BookOrbitHttpTransport.h"
 #include "network/BookOrbitStreamDownloader.h"
 using BookOrbitTransport = BookOrbitHttpTransport;
+using BookOrbitDownloader = BookOrbitStreamDownloader;
 #endif
 
 namespace fui = freeink::ui;
@@ -114,9 +117,6 @@ void BookOrbitCatalogActivity::loadPage() {
 }
 
 void BookOrbitCatalogActivity::downloadSelected() {
-#ifdef SIMULATOR
-  statusMessage = tr(STR_BOOKORBIT_CATALOG_UNAVAILABLE);
-#else
   if (selectedIndex >= page.items.size()) return;
   const auto& book = page.items[selectedIndex];
 
@@ -137,8 +137,8 @@ void BookOrbitCatalogActivity::downloadSelected() {
     return;
   }
 
-  BookOrbitStreamDownloader downloader(BOOKORBIT_STORE.getRootCaPem().c_str(), BOOKORBIT_STORE.getUsername(),
-                                       BOOKORBIT_STORE.getMd5Password());
+  BookOrbitDownloader downloader(BOOKORBIT_STORE.getRootCaPem().c_str(), BOOKORBIT_STORE.getUsername(),
+                                 BOOKORBIT_STORE.getMd5Password());
   const std::string url =
       BOOKORBIT_STORE.getServerUrl() + "/koreader/plugin/catalog/files/" + std::to_string(book.fileId) + "/download";
 
@@ -157,7 +157,6 @@ void BookOrbitCatalogActivity::downloadSelected() {
   }
 
   statusMessage = tr(STR_BOOKORBIT_ON_DEVICE);
-#endif
 }
 
 void BookOrbitCatalogActivity::handleSelection() {
