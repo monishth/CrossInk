@@ -21,16 +21,24 @@ Reviewing this list is cheaper than discovering these during implementation.
 | 1.4 | All new code in new files under `lib/BookOrbit/` | Mergeability with upstream | 🟢 | — |
 | 1.5 | Interfaces (`IHttpTransport`, `IBlobStore`) exist so the core is host-testable | Native CTest suite already exists and is the only fast feedback loop | 🟡 | Testing collapses to on-device only |
 
-## 2. Protocol
+## 2. Protocol — **VERIFIED against the server source**
 
-| # | Assumption | Why | Risk | If wrong |
-|---|---|---|---|---|
-| 2.1 | The Lua client is an accurate description of the server | Server source not read; protocol reverse-engineered from `bookorbit.koplugin` | 🔴 | Any endpoint could mismatch. **Cheapest mitigation: read the BookOrbit server source, which the user has.** |
-| 2.2 | `x-auth-key` is `md5(password)`, lowercase hex, unsalted | Verified in `bookorbit_main_menu.lua:791-796` | 🟢 | — |
-| 2.3 | Server tolerates a device that is not KOReader | No device-type gating seen in the client | 🟡 | May need a `pluginVersion` string that mimics the plugin |
-| 2.4 | Re-sent page-stat events are idempotent server-side | The watermark back-off relies on it; the Lua comment says "duplicates are server-side no-ops" | 🔴 | Duplicate reading time would accumulate. **Verify against the server before shipping P1.** |
-| 2.5 | Body cap is 900 KiB client-side, 1 MiB server-side | `bookorbit_api.lua:20` | 🟢 | — |
-| 2.6 | Batch sizes (500 stats, 500 hashes, 200 states, 100 progress, 50 changes) are client choices, not server limits | They appear only as client constants | 🟢 | Lower them |
+Server cloned to `/home/monish/repos/bookorbit-server` (`github.com/bookorbit/bookorbit`,
+public; the deployed image is `ghcr.io/bookorbit/bookorbit:latest`). It ships
+`koreader-plugin/` alongside the server, confirming the client the protocol was
+read from is authoritative. These are no longer assumptions.
+
+| # | Finding | Evidence | Status |
+|---|---|---|---|
+| 2.1 | The Lua client accurately describes the server | Server source read directly | ✅ Confirmed |
+| 2.2 | `x-auth-key` is `md5(password)`, lowercase hex | `koreader-auth.guard.ts:64-70` accepts a 32-char hex md5 directly, else md5s the incoming value | ✅ Confirmed |
+| 2.3 | Server does not gate on device type | No device-type check in the guard or controller | ✅ Confirmed |
+| 2.4 | **Re-sent page-stat events are true no-ops** | `koreader-plugin.repository.ts:72-80` — `onConflictDoNothing` on `(userId, bookFileId, deviceId, page, startTime)`. `duplicates = events.length - accepted` is counted and discarded | ✅ **Confirmed — P1's watermark back-off is safe** |
+| 2.5 | Body cap 900 KiB client-side | Client-side constant; no server body limit found in `main.ts` | ✅ Safe |
+| 2.6 | ~~Batch sizes are client choices~~ **WRONG — they are enforced server limits** | `koreader-stats.service.ts:18` `MAX_EVENTS_PER_REQUEST = 500`, and `:50-52` throws `BadRequestException` above it. Also `MAX_ANNOTATIONS_PER_REQUEST = 50`, `MAX_CHANGES_PER_REQUEST = 50` | ⚠️ **Corrected** — exceeding a batch size is a hard 400, not a soft preference. Never raise them |
+| 2.7 | **`deviceId` must be stable and persisted** | The dedup key includes `deviceId`, so a device that regenerates its ID re-inserts its entire history as new rows. The Lua plugin reads a persisted `G_reader_settings` `device_id` (`main.lua:138`) | 🔴 **New requirement** — CrossInk must generate a device ID once, persist it to SD, and never regenerate it on reboot or reflash |
+| 2.8 | `durationSeconds` is server-validated at `@Max(86400)` | `dto/koreader-plugin.dto.ts:104-105` | ✅ P1's 120 s clamp is well inside the limit |
+| 2.9 | The watermark is the batch's max `startTime`, duplicates included | `koreader-stats.service.ts:94-97` — deliberate, so "a plugin that lost its local state still advances past history the server already has" | ✅ Consistent with P1's back-off |
 
 ## 3. Statistics (P1)
 
@@ -134,10 +142,13 @@ builds independently of the simulator.
 
 ## The five worth resolving before writing code
 
-1. **2.1 / 2.4 — read the BookOrbit server source.** The whole protocol is
-   inferred from a client, and the idempotency assumption behind P1's watermark
-   back-off is load-bearing. The user has the source; an hour here de-risks
-   every phase.
+*(2.1 and 2.4 were resolved by reading the server source — see section 2.)*
+
+1. **2.7 — device ID stability.** The server dedups page-stat events on a key
+   that *includes* `deviceId`. If CrossInk regenerates its ID on reboot or
+   reflash, every re-sent event inserts as new and reading time silently
+   doubles. Generate once, persist to SD, never regenerate. This replaced the
+   old "read the server source" item, which is now done.
 2. **3.2 — the clamp change.** It alters numbers the user already sees. Worth a
    conscious yes.
 3. **3.4 — reference-page stability.** If they drift, P1's whole comparability
