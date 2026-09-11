@@ -97,6 +97,8 @@ inline esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause() { return ESP_SLEEP_
 #include "activities/reader/StatsBackup.h"
 #include "activities/settings/FontDownloadActivity.h"
 #include "activities/settings/KOReaderAuthActivity.h"
+#include "activities/bookorbit/BookOrbitCatalogActivity.h"
+#include "activities/bookorbit/BookOrbitSyncActivity.h"
 #include "activities/settings/KOReaderSettingsActivity.h"
 #include "activities/settings/OtaUpdateActivity.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
@@ -1535,6 +1537,34 @@ void setup() {
       case NetworkBootTarget::FILE_TRANSFER:
         launched = activityManager.resumeFileTransferFromNetworkBoot(snapshotPayload);
         break;
+      case NetworkBootTarget::BOOKORBIT_SYNC: {
+        // Sync needs a book; without one there is nothing to reconcile.
+        if (APP_STATE.openEpubPath.empty()) {
+          LOG_ERR("MAIN", "BookOrbit sync boot with no open book");
+          break;
+        }
+        auto syncActivity =
+            makeUniqueNoThrow<BookOrbitSyncActivity>(renderer, mappedInputManager, APP_STATE.openEpubPath);
+        if (syncActivity) {
+          activityManager.replaceActivity(std::move(syncActivity));
+          launched = true;
+        } else {
+          LOG_ERR("MAIN", "OOM: BookOrbit sync activity after minimal boot (free=%u maxAlloc=%u)", ESP.getFreeHeap(),
+                  ESP.getMaxAllocHeap());
+        }
+        break;
+      }
+      case NetworkBootTarget::BOOKORBIT_CATALOG: {
+        auto catalogActivity = makeUniqueNoThrow<BookOrbitCatalogActivity>(renderer, mappedInputManager);
+        if (catalogActivity) {
+          activityManager.replaceActivity(std::move(catalogActivity));
+          launched = true;
+        } else {
+          LOG_ERR("MAIN", "OOM: BookOrbit catalog activity after minimal boot (free=%u maxAlloc=%u)",
+                  ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+        }
+        break;
+      }
       case NetworkBootTarget::MANAGE_FONTS: {
         auto fontsActivity = makeUniqueNoThrow<FontDownloadActivity>(renderer, mappedInputManager);
         if (fontsActivity) {

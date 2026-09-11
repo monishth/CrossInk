@@ -4,13 +4,24 @@
 
 **Goal:** Two-way reading position at xpointer fidelity. Fix the defect that makes every real KOReader xpointer miss (`ProgressMapper` matches the literal `"/body/DocFragment["` and emits paths without `[1]` indices), extend the resolver from paragraph granularity to full element ancestry, and add the three BookOrbit progress endpoints with a hard "never degrade silently" rule.
 
-> **Before starting: the corpus does not exist yet.** Task 1's generator
-> scripts are specified in this plan but have **not been run**, and no fixture
-> CSVs are committed. Earlier drafts of this plan quoted specific corpus figures
-> (404 rows, 16 synthetic) as measured; those numbers were not reproducible and
-> have been removed. Generate the corpus first, record the real counts it
-> prints, then pin them in the guard tests. Treat any remaining figure in this
-> document as illustrative until you have produced it yourself.
+> **Corpus status: GENERATED (2026-09-11).** Task 1's generator has been run.
+> `test/bookorbit_xpointer_corpus/fixtures/` holds **404 rows / 353 distinct
+> xpointers** across 13 EPUBs x 2 DOM versions, plus 86 spine XHTML files
+> (572 KB). Output is byte-identical across repeated runs.
+>
+> Note for anyone reading the history: the figures an earlier draft quoted
+> (404 rows, 16 synthetic) and that a later review struck as "not
+> reproducible" were **correct**. The measured corpus is 404 rows with
+> exactly 16 synthetic boxing steps (15 `autoBoxing` + 1 `tabularBox`). The
+> retraction was the error, not the original numbers.
+>
+> Two findings that change Task 4's shape:
+> - **Synthetic boxing steps occur only under legacy DOM 20171225.** DOM
+>   20260812 emits none. The stripping logic is a legacy-compatibility path,
+>   not a mainline one.
+> - **The `ProgressMapper` defect is total, not partial.** Its literal matches
+>   202/202 legacy-DOM rows and 0/202 modern-DOM rows, and both real sidecars
+>   on this machine carry `cre_dom_version = 20260812`.
 
 **Ground truth is generated, not guessed.** Task 1 drives the KOReader emulator on this machine to emit genuine crengine xpointers for every EPUB in `test/epubs/`, at two DOM versions, and commits them as CSV fixtures. The corpus covers every fixture EPUB at two DOM versions. Every later task is measured against it.
 
@@ -107,7 +118,7 @@ cd /home/monish/repos/koreader/koreader-emulator-x86_64-pc-linux-gnu-debug/korea
 | `CreDocument:getLatestDomVersion()` | 195 | **20260812** |
 | `CreDocument:getOldestDomVersion()` | 199 | **20171225** |
 
-Three environment facts, each established by running the generator below:
+Three environment facts, **confirmed by running the generator** (2026-09-11):
 
 - **`SDL_VIDEODRIVER=dummy` is required.** Without it `require("device")`
   segfaults on a headless machine. With it the generator runs to completion.

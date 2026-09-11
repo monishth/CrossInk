@@ -1,0 +1,25 @@
+add_executable(CatalogMutationsTest
+  CatalogMutationsTest.cpp
+  ${REPO_ROOT}/lib/BookOrbit/CatalogMutations.cpp
+  ${REPO_ROOT}/lib/BookOrbit/CatalogApi.cpp
+  ${REPO_ROOT}/lib/BookOrbit/CatalogQuery.cpp
+  ${REPO_ROOT}/lib/BookOrbit/CatalogDecode.cpp
+  ${REPO_ROOT}/lib/BookOrbit/CatalogDecodeCommon.cpp
+  ${REPO_ROOT}/lib/BookOrbit/BookOrbitClient.cpp
+  ${REPO_ROOT}/lib/BookOrbit/BookOrbitCapabilities.cpp
+  ${REPO_ROOT}/lib/BookOrbit/BookOrbitError.cpp
+  ${REPO_ROOT}/lib/BookOrbit/BookOrbitUrl.cpp
+  ${REPO_ROOT}/lib/JsonParser/StreamingJsonParser.cpp
+)
+
+target_include_directories(CatalogMutationsTest PRIVATE
+  ${REPO_ROOT}/lib/BookOrbit
+  ${REPO_ROOT}/lib/JsonParser
+)
+
+target_link_libraries(CatalogMutationsTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(CatalogMutationsTest)

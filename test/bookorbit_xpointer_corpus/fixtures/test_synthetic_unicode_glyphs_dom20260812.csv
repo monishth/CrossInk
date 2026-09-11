@@ -1,0 +1,9 @@
+# epub=test_synthetic_unicode_glyphs.epub
+# dom_version=20260812
+# dom_version_with_normalized_xpointers=20200223
+# oldest_dom_version=20171225
+# latest_dom_version=20260812
+page,xpointer
+1,/body[1]/DocFragment[1]/body[1]/h1[1]/text()[1].0
+2,/body[1]/DocFragment[1]/body[1]/p[13]/text()[1].0
+3,/body[1]/DocFragment[2]/body[1]/h2[2]/text()[1].0

@@ -1,0 +1,66 @@
+# epub=font-prewarm-benchmark.epub
+# dom_version=20171225
+# dom_version_with_normalized_xpointers=20200223
+# oldest_dom_version=20171225
+# latest_dom_version=20260812
+page,xpointer
+1,/body/DocFragment[1]/body/h1/text().0
+2,/body/DocFragment[1]/body/p[1]/text().0
+3,/body/DocFragment[2]/body/p[1]/text().0
+4,/body/DocFragment[2]/body/p[9]/em/text().5
+5,/body/DocFragment[2]/body/p[17]/strong[2]/em/text().22
+6,/body/DocFragment[2]/body/p[26]/text().0
+7,/body/DocFragment[2]/body/p[34]/em/text().5
+8,/body/DocFragment[2]/body/p[42]/strong[2]/em/text().22
+9,/body/DocFragment[2]/body/p[51]/text().0
+10,/body/DocFragment[2]/body/p[59]/em/text().5
+11,/body/DocFragment[2]/body/p[67]/strong[2]/em/text().22
+12,/body/DocFragment[2]/body/p[76]/text().0
+13,/body/DocFragment[2]/body/p[84]/em/text().5
+14,/body/DocFragment[2]/body/p[92]/strong[2]/em/text().22
+15,/body/DocFragment[2]/body/p[101]/text().0
+16,/body/DocFragment[2]/body/p[109]/em/text().5
+17,/body/DocFragment[2]/body/p[117]/strong[2]/em/text().22
+18,/body/DocFragment[2]/body/p[126]/text().0
+19,/body/DocFragment[2]/body/p[134]/em/text().5
+20,/body/DocFragment[2]/body/p[142]/strong[2]/em/text().22
+21,/body/DocFragment[2]/body/p[151]/text().0
+22,/body/DocFragment[2]/body/p[159]/em/text().5
+23,/body/DocFragment[2]/body/p[167]/strong[2]/em/text().22
+24,/body/DocFragment[2]/body/p[176]/text().0
+25,/body/DocFragment[2]/body/p[184]/em/text().5
+26,/body/DocFragment[2]/body/p[192]/strong[2]/em/text().22
+27,/body/DocFragment[2]/body/p[201]/text().0
+28,/body/DocFragment[2]/body/p[209]/em/text().5
+29,/body/DocFragment[2]/body/p[217]/strong[2]/em/text().22
+30,/body/DocFragment[2]/body/p[226]/text().0
+31,/body/DocFragment[2]/body/p[234]/em/text().5
+32,/body/DocFragment[3]/body/p[1]/text().0
+33,/body/DocFragment[3]/body/p[9]/text().61
+34,/body/DocFragment[3]/body/p[17]/text().106
+35,/body/DocFragment[3]/body/p[26]/text().0
+36,/body/DocFragment[3]/body/p[34]/text().61
+37,/body/DocFragment[3]/body/p[42]/text().106
+38,/body/DocFragment[3]/body/p[51]/text().0
+39,/body/DocFragment[3]/body/p[59]/text().61
+40,/body/DocFragment[3]/body/p[67]/text().106
+41,/body/DocFragment[3]/body/p[76]/text().0
+42,/body/DocFragment[3]/body/p[84]/text().61
+43,/body/DocFragment[3]/body/p[92]/text().106
+44,/body/DocFragment[3]/body/p[101]/text().0
+45,/body/DocFragment[3]/body/p[109]/text().61
+46,/body/DocFragment[3]/body/p[117]/text().106
+47,/body/DocFragment[3]/body/p[126]/text().0
+48,/body/DocFragment[3]/body/p[134]/text().61
+49,/body/DocFragment[3]/body/p[142]/text().106
+50,/body/DocFragment[3]/body/p[151]/text().0
+51,/body/DocFragment[3]/body/p[159]/text().61
+52,/body/DocFragment[3]/body/p[167]/text().106
+53,/body/DocFragment[3]/body/p[176]/text().0
+54,/body/DocFragment[3]/body/p[184]/text().61
+55,/body/DocFragment[3]/body/p[192]/text().106
+56,/body/DocFragment[3]/body/p[201]/text().0
+57,/body/DocFragment[3]/body/p[209]/text().61
+58,/body/DocFragment[3]/body/p[217]/text().106
+59,/body/DocFragment[3]/body/p[226]/text().0
+60,/body/DocFragment[3]/body/p[234]/text().61

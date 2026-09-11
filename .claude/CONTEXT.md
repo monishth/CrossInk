@@ -11,9 +11,16 @@ Refer to https://freeink.org/llms.txt for guidance.
 - Simulator patches belong in the adjacent `crossink-simulator` repo.
 - The valid local simulator env in this repo is `simulator`, and `pio run -e simulator` currently builds cleanly.
 - The simulator `PNGdec` stub in `crossink-simulator/src/PNGdec.h` needs to mirror the real API shape used by app code, including `hasAlpha()` and `getTransparentColor()`, even though decode still fails intentionally.
+- Toolchain: `[simulator-base]` needs `-Wno-narrowing` (NOT clang's `-Wno-c++11-narrowing`,
+  which GCC only reports as unrecognized), `-std=gnu17` (QRCode's `typedef unsigned char bool`
+  is illegal under the C23 default of GCC 15+), and `-lcrypto` (the simulator package's
+  `MD5Builder_linux.h` calls OpenSSL `MD5_*`). With those, stock GCC 16 builds it; clang is
+  not needed. PlatformIO's native builder hardcodes gcc/g++ and drops `-Wl,--start-group`
+  for non-gcc, which this project's cyclic archives require — so clang needs extra scaffolding.
 - Known simulator limits:
-  - No image rendering: `platformio.ini` ignores `hal`, `PNGdec`, and `JPEGDEC`, so image decoders are intentionally absent.
-  - JPEGDEC stub always fails; `JPEGDEC fallback: open failed (err=-1)` is expected in simulator.
+  - `lib_ignore` is only `hal, WebSockets`; `PNGdec`/`JPEGDEC` ARE built, with
+    `-DCROSSPOINT_SIM_USE_NATIVE_DECODERS` selecting the native decoders over the stubs.
+    (Verified they compile and link; actual image output not re-verified.)
   - `esp_deep_sleep_start()` is a no-op in simulator.
   - `HalStorage` uses POSIX file access under `./fs_` and allows multiple readers, unlike real hardware.
 

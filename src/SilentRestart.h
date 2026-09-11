@@ -14,6 +14,8 @@ enum class NetworkBootTarget : uint32_t {
   KOREADER_AUTH = 5,
   FILE_TRANSFER = 6,
   MANAGE_FONTS = 7,
+  BOOKORBIT_SYNC = 8,
+  BOOKORBIT_CATALOG = 9,
 };
 
 constexpr bool isNetworkBootTargetValue(const uint32_t value) {
@@ -24,6 +26,8 @@ constexpr bool isNetworkBootTargetValue(const uint32_t value) {
     case NetworkBootTarget::KOREADER_AUTH:
     case NetworkBootTarget::FILE_TRANSFER:
     case NetworkBootTarget::MANAGE_FONTS:
+    case NetworkBootTarget::BOOKORBIT_SYNC:
+    case NetworkBootTarget::BOOKORBIT_CATALOG:
       return true;
   }
   return false;

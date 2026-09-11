@@ -1,3 +1,22 @@
+## [Unreleased]
+
+### Added
+
+- BookOrbit sync: the reader can authenticate against a self-hosted BookOrbit server, match its library by content hash, and sync reading position at full KOReader xpointer fidelity rather than by percentage alone.
+- Reading statistics recorded per page turn in an append-only log, using KOReader's own clamping rules (5 s minimum, 120 s maximum per page) so on-device numbers are directly comparable to KOReader's.
+- Two-way sync of book status, 1-5 star ratings and review notes, plus highlights and bookmarks.
+- Browse and download from a BookOrbit library over Wi-Fi, with downloads streamed to a temporary file and published atomically once complete.
+
+### Changed
+
+- Reading-time accounting now clamps a long dwell on one page to 120 seconds instead of discarding it, and counts a page only after 5 seconds instead of 2. Existing all-time totals are kept and shown separately, because the two rules are not comparable and must not be summed.
+- BookOrbit connections verify the server's TLS certificate against a root certificate you supply, and refuse to connect when none is configured.
+
+### Fixed
+
+- KOReader reading positions from any current version of KOReader now resolve correctly. The previous code only understood the pre-2020 xpointer form, so every position written by a modern KOReader silently fell back to a percentage-based guess.
+- The simulator builds again on current toolchains.
+
 ## [v1.5.1] - 2026-09-10
 
 ### Added

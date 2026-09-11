@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Style Priority / Override</title>
+  <link rel="stylesheet" type="text/css" href="styles/test.css"/>
+</head>
+<body>
+
+<h1>Test: Style Priority</h1>
+
+<h2>Inline overrides stylesheet to hide</h2>
+<p>The div below has no hidden class but an inline style hides it.</p>
+<div style="display:none">
+  <p>[HIDDEN] Hidden by inline style, no class involved.</p>
+</div>
+<p>Visible after inline-hidden div.</p>
+
+<h2>Inline overrides stylesheet to show</h2>
+<p>The paragraph below has class="hidden" but inline style="display:block"
+overrides it back to visible. It SHOULD appear.</p>
+<p class="hidden" style="display:block">VISIBLE: class="hidden" overridden
+by inline style="display:block".</p>
+<p>If the paragraph above is visible, inline override works correctly.</p>
+
+<h2>element.class override of class</h2>
+<p>The paragraph below has class="force-show hidden". The .hidden class
+sets display:none, but p.force-show sets display:block at higher priority.</p>
+<p class="force-show hidden">VISIBLE: p.force-show overrides .hidden back
+to display:block.</p>
+<p>If the paragraph above is visible, element.class priority works.</p>
+
+</body>
+</html>

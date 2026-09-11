@@ -1,0 +1,66 @@
+# epub=font-prewarm-benchmark.epub
+# dom_version=20260812
+# dom_version_with_normalized_xpointers=20200223
+# oldest_dom_version=20171225
+# latest_dom_version=20260812
+page,xpointer
+1,/body[1]/DocFragment[1]/body[1]/h1[1]/text()[1].0
+2,/body[1]/DocFragment[1]/body[1]/p[1]/text()[1].0
+3,/body[1]/DocFragment[2]/body[1]/p[1]/text()[1].0
+4,/body[1]/DocFragment[2]/body[1]/p[9]/em[1]/text()[1].5
+5,/body[1]/DocFragment[2]/body[1]/p[17]/strong[2]/em[1]/text()[1].22
+6,/body[1]/DocFragment[2]/body[1]/p[26]/text()[1].0
+7,/body[1]/DocFragment[2]/body[1]/p[34]/em[1]/text()[1].5
+8,/body[1]/DocFragment[2]/body[1]/p[42]/strong[2]/em[1]/text()[1].22
+9,/body[1]/DocFragment[2]/body[1]/p[51]/text()[1].0
+10,/body[1]/DocFragment[2]/body[1]/p[59]/em[1]/text()[1].5
+11,/body[1]/DocFragment[2]/body[1]/p[67]/strong[2]/em[1]/text()[1].22
+12,/body[1]/DocFragment[2]/body[1]/p[76]/text()[1].0
+13,/body[1]/DocFragment[2]/body[1]/p[84]/em[1]/text()[1].5
+14,/body[1]/DocFragment[2]/body[1]/p[92]/strong[2]/em[1]/text()[1].22
+15,/body[1]/DocFragment[2]/body[1]/p[101]/text()[1].0
+16,/body[1]/DocFragment[2]/body[1]/p[109]/em[1]/text()[1].5
+17,/body[1]/DocFragment[2]/body[1]/p[117]/strong[2]/em[1]/text()[1].22
+18,/body[1]/DocFragment[2]/body[1]/p[126]/text()[1].0
+19,/body[1]/DocFragment[2]/body[1]/p[134]/em[1]/text()[1].5
+20,/body[1]/DocFragment[2]/body[1]/p[142]/strong[2]/em[1]/text()[1].22
+21,/body[1]/DocFragment[2]/body[1]/p[151]/text()[1].0
+22,/body[1]/DocFragment[2]/body[1]/p[159]/em[1]/text()[1].5
+23,/body[1]/DocFragment[2]/body[1]/p[167]/strong[2]/em[1]/text()[1].22
+24,/body[1]/DocFragment[2]/body[1]/p[176]/text()[1].0
+25,/body[1]/DocFragment[2]/body[1]/p[184]/em[1]/text()[1].5
+26,/body[1]/DocFragment[2]/body[1]/p[192]/strong[2]/em[1]/text()[1].22
+27,/body[1]/DocFragment[2]/body[1]/p[201]/text()[1].0
+28,/body[1]/DocFragment[2]/body[1]/p[209]/em[1]/text()[1].5
+29,/body[1]/DocFragment[2]/body[1]/p[217]/strong[2]/em[1]/text()[1].22
+30,/body[1]/DocFragment[2]/body[1]/p[226]/text()[1].0
+31,/body[1]/DocFragment[2]/body[1]/p[234]/em[1]/text()[1].5
+32,/body[1]/DocFragment[3]/body[1]/p[1]/text()[1].0
+33,/body[1]/DocFragment[3]/body[1]/p[9]/text()[1].61
+34,/body[1]/DocFragment[3]/body[1]/p[17]/text()[1].106
+35,/body[1]/DocFragment[3]/body[1]/p[26]/text()[1].0
+36,/body[1]/DocFragment[3]/body[1]/p[34]/text()[1].61
+37,/body[1]/DocFragment[3]/body[1]/p[42]/text()[1].106
+38,/body[1]/DocFragment[3]/body[1]/p[51]/text()[1].0
+39,/body[1]/DocFragment[3]/body[1]/p[59]/text()[1].61
+40,/body[1]/DocFragment[3]/body[1]/p[67]/text()[1].106
+41,/body[1]/DocFragment[3]/body[1]/p[76]/text()[1].0
+42,/body[1]/DocFragment[3]/body[1]/p[84]/text()[1].61
+43,/body[1]/DocFragment[3]/body[1]/p[92]/text()[1].106
+44,/body[1]/DocFragment[3]/body[1]/p[101]/text()[1].0
+45,/body[1]/DocFragment[3]/body[1]/p[109]/text()[1].61
+46,/body[1]/DocFragment[3]/body[1]/p[117]/text()[1].106
+47,/body[1]/DocFragment[3]/body[1]/p[126]/text()[1].0
+48,/body[1]/DocFragment[3]/body[1]/p[134]/text()[1].61
+49,/body[1]/DocFragment[3]/body[1]/p[142]/text()[1].106
+50,/body[1]/DocFragment[3]/body[1]/p[151]/text()[1].0
+51,/body[1]/DocFragment[3]/body[1]/p[159]/text()[1].61
+52,/body[1]/DocFragment[3]/body[1]/p[167]/text()[1].106
+53,/body[1]/DocFragment[3]/body[1]/p[176]/text()[1].0
+54,/body[1]/DocFragment[3]/body[1]/p[184]/text()[1].61
+55,/body[1]/DocFragment[3]/body[1]/p[192]/text()[1].106
+56,/body[1]/DocFragment[3]/body[1]/p[201]/text()[1].0
+57,/body[1]/DocFragment[3]/body[1]/p[209]/text()[1].61
+58,/body[1]/DocFragment[3]/body[1]/p[217]/text()[1].106
+59,/body[1]/DocFragment[3]/body[1]/p[226]/text()[1].0
+60,/body[1]/DocFragment[3]/body[1]/p[234]/text()[1].61

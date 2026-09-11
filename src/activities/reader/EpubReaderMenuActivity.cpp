@@ -1,5 +1,7 @@
 #include "EpubReaderMenuActivity.h"
 
+#include "network/BookOrbitCredentialStore.h"
+
 #include <FreeInkUIIcon.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
@@ -275,6 +277,10 @@ EpubReaderMenuActivity::TabMenuItems EpubReaderMenuActivity::buildMenuItems(
   settingsItems.push_back({MenuAction::CONTROLS_OPTIONS, StrId::STR_CAT_CONTROLS});
   settingsItems.push_back(
       {MenuAction::TOGGLE_COMPLETED, isBookCompleted ? StrId::STR_MARK_UNFINISHED : StrId::STR_MARK_FINISHED});
+  // Ratings are a BookOrbit concept, so the row only appears when it is on.
+  if (BOOKORBIT_STORE.isEnabled()) {
+    settingsItems.push_back({MenuAction::RATE_BOOK, StrId::STR_BOOKORBIT_RATE});
+  }
   return items;
 }
 

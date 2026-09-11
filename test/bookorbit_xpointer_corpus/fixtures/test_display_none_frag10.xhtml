@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Hidden Images</title>
+  <link rel="stylesheet" type="text/css" href="styles/test.css"/>
+</head>
+<body>
+
+<h1>Test: Hidden Images</h1>
+<p>Images can be hidden via CSS on the img tag itself, or by hiding
+a parent container that contains images.</p>
+
+<h2>Visible image (control)</h2>
+<p>This image should be visible:</p>
+<img src="images/visible.png" alt="Visible control image"/>
+<p>If you see the image above, image rendering works.</p>
+
+<h2>Image hidden via class="hidden"</h2>
+<p>The image below has class="hidden" and should NOT appear:</p>
+<img class="hidden" src="images/hidden_class.png" alt="[HIDDEN] class hidden"/>
+<p>No image should be visible between the two paragraphs above.</p>
+
+<h2>Image hidden via inline style</h2>
+<p>The image below has style="display:none" and should NOT appear:</p>
+<img style="display:none" src="images/hidden_inline.png" alt="[HIDDEN] inline hidden"/>
+<p>No image should be visible between the two paragraphs above.</p>
+
+<h2>Image hidden via img.suppressed selector</h2>
+<p>The image below has class="suppressed" and the CSS rule
+img.suppressed sets display:none:</p>
+<img class="suppressed" src="images/hidden_suppressed.png" alt="[HIDDEN] suppressed"/>
+<p>No image should be visible between the two paragraphs above.</p>
+
+<h2>Image inside hidden parent</h2>
+<p>The div below is hidden; the image inside should also be hidden:</p>
+<div class="hidden">
+  <p>[HIDDEN] Text before image in hidden div.</p>
+  <img src="images/hidden_parent.png" alt="[HIDDEN] parent hidden"/>
+  <p>[HIDDEN] Text after image in hidden div.</p>
+</div>
+<p>No image or text from the hidden div should appear above.</p>
+
+<h2>Image with class="hidden" overridden by inline style</h2>
+<p>The image below has class="hidden" but inline style="display:block"
+overrides it back to visible. It SHOULD appear:</p>
+<img class="hidden" style="display:block" src="images/override_visible.png" alt="Override visible"/>
+<p>If the image above is visible, inline override on img works correctly.</p>
+
+</body>
+</html>

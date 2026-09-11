@@ -20,6 +20,7 @@
 #include "ManualPageTurnQueue.h"
 #include "ReaderProgressSaveDebouncer.h"
 #include "activities/Activity.h"
+#include "bookorbit/BookOrbitEventRecorder.h"
 #include "components/OptionPopup.h"
 #if CROSSINK_APP_CAP_TOUCH
 #include "activities/reader/ReaderPinchGesture.h"
@@ -102,6 +103,11 @@ class EpubReaderActivity final : public Activity {
   ActiveBookReaderSettingsData initialBookReaderSettings;
   std::unique_ptr<Section> section = nullptr;
   int currentSpineIndex = 0;
+  // Session-scoped BookOrbit reading-event recorder. Allocated in onEnter(),
+  // released in onExit(); null when BookOrbit is disabled. Its lifetime is what
+  // lets ReadingEventLog batch writes instead of touching the SD card on every
+  // page turn.
+  std::unique_ptr<BookOrbitEventRecorder> bookOrbitEvents;
   int nextPageNumber = 0;
   int activeSectionFontId = 0;
   uint32_t activeSectionLayoutSignature = 0;

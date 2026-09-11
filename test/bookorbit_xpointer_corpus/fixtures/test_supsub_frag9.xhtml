@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>CSS Style Tests</title>
+  <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+  <h1>CSS Style Tests</h1>
+  
+<h2>CSS Classes</h2>
+<p>This tests superscript via CSS class (.super): E = mc<span class="super">2</span>.</p>
+<p>This tests subscript via CSS class (.sub): Water is H<span class="sub">2</span>O.</p>
+<p>This tests a CSS superscript internal link: Footnote<a class="super" href="#css-footnote">1</a>.</p>
+<p id="css-footnote">CSS superscript internal-link target.</p>
+
+<h2>CSS Inline Styles</h2>
+<p>This tests superscript via inline style: E = mc<span style="vertical-align: super;">2</span>.</p>
+<p>This tests subscript via inline style: Water is H<span style="vertical-align: sub;">2</span>O.</p>
+
+<h2>Comparison Side-by-Side</h2>
+<p>Tag `sup`: E = mc<sup>2</sup></p>
+<p>Class `super`: E = mc<span class="super">2</span></p>
+<p>Inline `super`: E = mc<span style="vertical-align: super;">2</span></p>
+<br/>
+<p>Tag `sub`: H<sub>2</sub>O</p>
+<p>Class `sub`: H<span class="sub">2</span>O</p>
+<p>Inline `sub`: H<span style="vertical-align: sub;">2</span>O</p>
+
+<h2>Mixed and Nested in CSS</h2>
+<p>CSS Class mixed: [H<span class="sub">3</span>O<span class="super">+</span>] = 10<span class="super">-7</span> mol/L.</p>
+<p>CSS Inline mixed: [H<span style="vertical-align: sub;">3</span>O<span style="vertical-align: super;">+</span>] = 10<span style="vertical-align: super;">-7</span> mol/L.</p>
+<p><b>Bold text with class H<span class="sub">2</span>O and E = mc<span class="super">2</span> inside.</b></p>
+<p><i>Italic text with inline H<span style="vertical-align: sub;">2</span>O and E = mc<span style="vertical-align: super;">2</span> inside.</i></p>
+
+</body>
+</html>

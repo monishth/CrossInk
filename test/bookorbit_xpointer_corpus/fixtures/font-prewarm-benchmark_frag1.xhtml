@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Instructions</title>
+  <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+<h1>Font prewarm benchmark</h1>
+<p>This book compares a mixed regular, bold, italic, and bold-italic workload with a regular-only control containing exactly the same characters.</p>
+<ol>
+  <li>Use the same device, firmware settings, orientation, font size, antialiasing, and refresh mode for both builds.</li>
+  <li>Test once with a built-in four-style family and once with the SD-card Literata family.</li>
+  <li>Open Mixed styles, discard the first rendered page, then record ten sequential ERS Page render log lines.</li>
+  <li>Repeat from the first page of Regular-only control.</li>
+  <li>Record the periodic MEM Free, Min Free, and MaxAlloc line before the run and after repeated page turns.</li>
+</ol>
+<p>The mixed chapter isolates style-aware prewarming. The regular-only chapter is a control for scanner and display costs. Repeating the run exposes transient heap allocation and fragmentation.</p>
+</body>
+</html>

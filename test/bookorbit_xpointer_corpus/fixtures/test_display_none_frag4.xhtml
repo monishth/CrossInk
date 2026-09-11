@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Combined Selector: div.removeme</title>
+  <link rel="stylesheet" type="text/css" href="styles/test.css"/>
+</head>
+<body>
+
+<h1>Test: Combined Element.Class Selector</h1>
+<p>Only div elements with class="removeme" should be hidden.
+A span with class="removeme" should still be visible (no rule for span.removeme),
+but a div without the class should also be visible.</p>
+
+<div class="removeme">
+  <p>[HIDDEN] This div.removeme must not appear.</p>
+</div>
+
+<div>
+  <p>This plain div should be visible.</p>
+</div>
+
+<p>A <span class="removeme">visible span.removeme</span> should still appear
+because the CSS rule only targets div.removeme.</p>
+
+<h2>span.secret selector</h2>
+<p>The word <span class="secret">[HIDDEN]</span> in this sentence uses
+span.secret and should be hidden, but a
+<div class="secret">div with class="secret"</div> would not match
+span.secret (though it matches .hidden if also classed).</p>
+
+</body>
+</html>

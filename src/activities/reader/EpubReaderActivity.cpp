@@ -31,6 +31,9 @@
 #include "ClippingStore.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "BookRatingMenuModel.h"
+#include "bookorbit/BookOrbitEventRecorder.h"
+#include "bookorbit/BookOrbitLocalState.h"
 #include "DictionaryWordSelectActivity.h"
 #include "EpubGrayscale.h"
 #include "EpubReaderBookmarkListActivity.h"
@@ -1483,6 +1486,22 @@ void EpubReaderActivity::recordCurrentPageReadingTime(const char* source) {
     pageShownAtMs = 0UL;
     return;
   }
+
+  // BookOrbit deliberately does NOT reuse currentPageReadingSecondsForStats():
+  // that helper discards any dwell beyond the legacy idle threshold, whereas
+  // KOReader — and therefore BookOrbit — clamps it to max_sec and still credits
+  // it. Feeding it the filtered value would silently drop exactly the reading
+  // time this phase exists to start counting. The raw elapsed time goes to the
+  // recorder, which applies KOReader's own clamp.
+  if (bookOrbitEvents && pageShownAtMs != 0UL && epub && section) {
+    const uint32_t rawSeconds = static_cast<uint32_t>((millis() - pageShownAtMs) / 1000UL);
+    const int estimatedPageCount = section->estimatedTotalPages();
+    const float sectionProgress =
+        (estimatedPageCount > 0) ? static_cast<float>(section->currentPage) / static_cast<float>(estimatedPageCount)
+                                 : 0.0f;
+    bookOrbitEvents->recordPageDwell(*epub, currentSpineIndex, sectionProgress, rawSeconds);
+  }
+
   uint32_t seconds = 0;
   if (currentPageReadingSecondsForStats(seconds, source)) {
     sessionReadingSeconds = sessionReadingSeconds > UINT32_MAX - seconds ? UINT32_MAX : sessionReadingSeconds + seconds;
@@ -2066,6 +2085,8 @@ void EpubReaderActivity::onEnter() {
   // over, and onExit() unconditionally tears down the setup below. Returning early here
   // instead would leave reader mode and the bookmark/clipping stores unbalanced.
   captureGlobalReaderSettings();
+  // Durable setup belongs in onEnter(); null when BookOrbit is off.
+  bookOrbitEvents = BookOrbitEventRecorder::create(getCurrentBookPath());
   epub->setupCacheDir();
   {
     GfxRenderer::FrameBufferLoan loan(renderer);
@@ -2202,6 +2223,9 @@ void EpubReaderActivity::onEnter() {
 }
 
 void EpubReaderActivity::onExit() {
+  // Release in reverse order of acquisition; the destructor flushes whatever is
+  // still buffered so a reading session never loses its tail of events.
+  bookOrbitEvents.reset();
   sdFontSystem.setSettingsPersistenceCallback(nullptr, nullptr);
   clearPendingManualPageTurns();
   mappedInput.setReaderTouchscreenOverride(false);
@@ -3737,9 +3761,35 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       }
       break;
     }
+    case EpubReaderMenuActivity::MenuAction::RATE_BOOK: {
+      // "Not rated" plus 1..5 stars, per BookRatingMenuModel. The option index
+      // maps straight onto the stored rating, so the mapping stays testable.
+      std::vector<std::string> options;
+      options.reserve(kRatingOptionCount);
+      options.push_back(tr(STR_BOOKORBIT_RATING_NONE));
+      options.push_back(tr(STR_BOOKORBIT_RATING_1));
+      options.push_back(tr(STR_BOOKORBIT_RATING_2));
+      options.push_back(tr(STR_BOOKORBIT_RATING_3));
+      options.push_back(tr(STR_BOOKORBIT_RATING_4));
+      options.push_back(tr(STR_BOOKORBIT_RATING_5));
+
+      const std::string path = getCurrentBookPath();
+      const int current = bookorbit_local::storedRating(path);
+      quickActionsPopup.show(StrId::STR_BOOKORBIT_RATING, options,
+                             optionIndexForRating(current > 0, static_cast<uint8_t>(current)),
+                             [this, path](const int index) {
+                               bookorbit_local::recordRating(path, ratingForOptionIndex(index));
+                               requestUpdate();
+                             });
+      requestUpdate();
+      break;
+    }
     case EpubReaderMenuActivity::MenuAction::TOGGLE_COMPLETED: {
       const bool markCompleted = !stats.isCompleted;
       setBookCompleted(markCompleted);
+      // Mirror the toggle into BookOrbit's book state so the next sync carries
+      // it. A no-op when BookOrbit is off or the clock has no valid date.
+      bookorbit_local::recordCompletion(getCurrentBookPath(), markCompleted);
       showCompletedFeedback(markCompleted);
       requestUpdate();
       break;

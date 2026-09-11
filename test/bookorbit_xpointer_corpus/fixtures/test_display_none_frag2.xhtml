@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Class Selector: .hidden</title>
+  <link rel="stylesheet" type="text/css" href="styles/test.css"/>
+</head>
+<body>
+
+<h1>Test: Class Selector</h1>
+<p>The paragraph below has class="hidden" and should NOT be visible.</p>
+<p class="hidden">[HIDDEN] This paragraph uses class="hidden" and must not appear.</p>
+<p>If you can only see this paragraph and the one above the hidden marker,
+the test PASSES.</p>
+
+<h2>Multiple hidden elements</h2>
+<p>Visible paragraph before hidden block.</p>
+<div class="hidden">
+  <p>[HIDDEN] This div has class="hidden".</p>
+  <p>[HIDDEN] Second paragraph inside hidden div.</p>
+</div>
+<p>Visible paragraph after hidden block.</p>
+
+<h2>Hidden span (inline)</h2>
+<p>This sentence has a <span class="hidden">[HIDDEN] secret word</span> hidden span in the middle.</p>
+
+<h2>Second hidden class name</h2>
+<p class="invisible">[HIDDEN] This paragraph uses class="invisible".</p>
+<p>Visible paragraph after invisible one.</p>
+
+</body>
+</html>

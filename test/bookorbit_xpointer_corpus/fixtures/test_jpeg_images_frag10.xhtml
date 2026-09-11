@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Image Centering Bleed Test</title></head>
+<body>
+<h1>Image Centering Bleed Test</h1>
+
+<p>Tests that image centering does not bleed into following text blocks (issue #1026).</p>
+<p>Set Paragraph Alignment to Justify and Embedded Style to OFF before testing.</p>
+<p>All paragraphs below the images should be justified, not centered.</p>
+<h1 class="hidden"></h1>
+<p><img src="images/centering_test.jpg" alt="Test image"/></p>
+<div>
+<p>FIRST PARAGRAPH after image. This paragraph follows an empty heading and an image-only paragraph. With the bug present, this text appears centered instead of justified because the empty heading's default Center alignment bleeds through the chain of empty text blocks. Lorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod tempor.</p>
+<p>SECOND PARAGRAPH in the same div. This paragraph should always be justified because the first paragraph's text block was flushed. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident sunt in culpa qui officia.</p>
+</div>
+
+</body>
+</html>

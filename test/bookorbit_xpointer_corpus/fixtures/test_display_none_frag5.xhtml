@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Inline Style: style attribute</title>
+  <link rel="stylesheet" type="text/css" href="styles/test.css"/>
+</head>
+<body>
+
+<h1>Test: Inline Style</h1>
+<p>Elements with style="display:none" directly in the HTML attribute.</p>
+
+<p style="display:none">[HIDDEN] Paragraph with inline display:none.</p>
+<p>Visible paragraph after inline-hidden one.</p>
+
+<div style="display: none">
+  <p>[HIDDEN] Div with inline style="display: none".</p>
+  <p>[HIDDEN] Second child of inline-hidden div.</p>
+</div>
+<p>Visible paragraph after inline-hidden div.</p>
+
+<h2>Inline style with other properties</h2>
+<p style="font-weight: bold; display: none; margin-top: 10px">[HIDDEN] Inline style
+mixed with other CSS properties.</p>
+<p>Visible paragraph below.</p>
+
+<h2>Inline on a span</h2>
+<p>Text before <span style="display:none">[HIDDEN] inline span</span> and text after.</p>
+
+</body>
+</html>

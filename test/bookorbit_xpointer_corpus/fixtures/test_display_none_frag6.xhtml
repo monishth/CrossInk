@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Nested Hidden Content</title>
+  <link rel="stylesheet" type="text/css" href="styles/test.css"/>
+</head>
+<body>
+
+<h1>Test: Nested Hidden Content</h1>
+<p>When a parent element is hidden, all its children must also be hidden,
+even if the children themselves have no display:none.</p>
+
+<div class="hidden-container">
+  <h2>[HIDDEN] Nested heading</h2>
+  <p>[HIDDEN] Nested paragraph one.</p>
+  <p>[HIDDEN] Nested paragraph two.</p>
+  <div>
+    <p>[HIDDEN] Deeply nested paragraph.</p>
+    <div>
+      <p>[HIDDEN] Even deeper nesting level 3.</p>
+    </div>
+  </div>
+</div>
+<p>Only this paragraph should be visible after the hidden container.</p>
+
+<h2>Hidden parent with visible-class child</h2>
+<div class="hidden">
+  <p class="visible">[HIDDEN] Child has class="visible" but parent is hidden.
+  Parent wins - this must NOT appear.</p>
+</div>
+<p>Visible paragraph confirming parent-wins behavior.</p>
+
+</body>
+</html>

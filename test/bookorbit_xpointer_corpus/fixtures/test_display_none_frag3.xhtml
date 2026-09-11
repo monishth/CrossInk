@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Element Selector: aside</title>
+  <link rel="stylesheet" type="text/css" href="styles/test.css"/>
+</head>
+<body>
+
+<h1>Test: Element Selector</h1>
+<p>The aside element below should be completely hidden because the
+stylesheet sets aside to display:none.</p>
+<aside>
+  <h2>[HIDDEN] Sidebar Title</h2>
+  <p>[HIDDEN] This aside content must not render.</p>
+  <p>[HIDDEN] Neither should this second paragraph.</p>
+</aside>
+<p>If no aside content is visible, this test PASSES.</p>
+
+<h2>Multiple asides</h2>
+<p>Text before first aside.</p>
+<aside><p>[HIDDEN] First aside block.</p></aside>
+<p>Text between asides.</p>
+<aside><p>[HIDDEN] Second aside block.</p></aside>
+<p>Text after last aside.</p>
+
+</body>
+</html>

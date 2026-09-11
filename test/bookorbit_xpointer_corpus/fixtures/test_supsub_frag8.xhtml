@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Edge Cases and Stress Tests</title>
+  <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+  <h1>Edge Cases and Stress Tests</h1>
+  
+<h2>Empty and Whitespace</h2>
+<p>Empty superscript: x<sup></sup>y should show xy.</p>
+<p>Whitespace: x<sup> </sup>y should show x y.</p>
+
+<h2>Nested Sup/Sub (Not Standard)</h2>
+<p>Nested attempt: x<sup>y<sup>z</sup></sup> (may not render correctly).</p>
+
+<h2>Unicode in Sup/Sub</h2>
+<p>Greek letters: α<sup>2</sup> + β<sup>2</sup> = γ<sup>2</sup>.</p>
+<p>Symbols: H<sub>2</sub>O → H<sup>+</sup> + OH<sup>−</sup>.</p>
+
+<h2>Line Breaking</h2>
+<p>Long text with superscript at the end of a line to test wrapping behavior when the superscript might need to wrap to the next line<sup>1</sup> and continue here.</p>
+
+</body>
+</html>

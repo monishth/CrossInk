@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Mixed Visible and Hidden Siblings</title>
+  <link rel="stylesheet" type="text/css" href="styles/test.css"/>
+</head>
+<body>
+
+<h1>Test: Mixed Siblings</h1>
+<p>Alternating visible and hidden elements to verify rendering continuity.</p>
+
+<p>Visible 1</p>
+<p class="hidden">[HIDDEN] Hidden 1</p>
+<p>Visible 2</p>
+<p style="display:none">[HIDDEN] Hidden 2</p>
+<p>Visible 3</p>
+<div class="hidden"><p>[HIDDEN] Hidden 3</p></div>
+<p>Visible 4</p>
+<aside><p>[HIDDEN] Hidden aside</p></aside>
+<p>Visible 5</p>
+<p class="invisible">[HIDDEN] Hidden 4</p>
+<p>Visible 6</p>
+
+<h2>Expected result</h2>
+<p>You should see "Visible 1" through "Visible 6" with no gaps or
+[HIDDEN] markers between them.</p>
+
+</body>
+</html>

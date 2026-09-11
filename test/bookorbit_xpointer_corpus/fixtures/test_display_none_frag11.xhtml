@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Mixed Images and Text Hiding</title>
+  <link rel="stylesheet" type="text/css" href="styles/test.css"/>
+</head>
+<body>
+
+<h1>Test: Mixed Images and Text</h1>
+<p>Alternating visible and hidden images and text.</p>
+
+<p>Visible text 1</p>
+<img src="images/visible.png" alt="Visible image 1"/>
+<p>Visible text 2</p>
+<img class="hidden" src="images/hidden_class.png" alt="[HIDDEN] image"/>
+<p>Visible text 3</p>
+<div class="hidden">
+  <img src="images/hidden_parent.png" alt="[HIDDEN] image in hidden div"/>
+</div>
+<p>Visible text 4</p>
+<img style="display:none" src="images/hidden_inline.png" alt="[HIDDEN] image"/>
+<p>Visible text 5</p>
+
+<h2>Expected result</h2>
+<p>You should see "Visible text 1" through "Visible text 5", with only
+one image visible (after "Visible text 1").</p>
+
+</body>
+</html>
