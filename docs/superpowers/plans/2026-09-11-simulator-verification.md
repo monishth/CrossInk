@@ -18,7 +18,9 @@ that is stated rather than papered over.
 | `wtype` (keyboard) | **Installed** | Drives the entire simulator UI — every screen is keyboard-navigable. |
 | `hyprctl dispatch click` | **Does not exist** | `Invalid dispatcher`. Hyprland cannot synthesize mouse clicks. |
 | `wlrctl` / `ydotool` / `dotool` | **Not installed** | `/dev/uinput` is root-only and the user is not in an `input` group, so `ydotool` would need a udev rule. |
-| `pio` (PlatformIO) | **Not installed** | Prerequisite for building the simulator at all. |
+| `pio` (PlatformIO) | **Installed** — 6.1.19 | On `PATH` via `~/.platformio/penv/bin`. |
+| **Simulator build** | **BROKEN on this machine** | `pio run -e x4-pro-simulator` fails under GCC 16 / libstdc++ 16 and under Clang. Three pre-existing breakages — see "Before any of this works" below. Everything else in this guide is blocked on that. |
+| `crossink-simulator` | **Auto-resolved** | Already a `lib_deps` entry (`simulator=https://github.com/uxjulia/crossink-simulator`); PlatformIO clones it into `.pio/libdeps/<env>/simulator/`. No manual clone needed. |
 
 **The headline:** clicks cannot be synthesized today, but they are not needed.
 The simulator is fully keyboard-driven, so `wtype` + `grim` covers the whole UI.
@@ -28,20 +30,47 @@ becomes necessary.
 
 ---
 
+## Before any of this works — the build is currently broken
+
+`pio run -e x4-pro-simulator` does **not** succeed on this system today. This is
+pre-existing and unrelated to BookOrbit work; the branch adds only documents.
+
+| # | Failure | Compiler | Detail |
+|---|---|---|---|
+| 1 | Narrowing in `src/network/html/*.generated.h` | GCC only | `[simulator-base]` suppresses this with `-Wno-c++11-narrowing`, a **Clang-only** spelling. GCC needs `-Wno-narrowing` and reports the flag as unrecognized. |
+| 2 | `static_assert` in `/usr/include/c++/16/bits/hashtable.h:1896` | any libstdc++ 16 | `CssParser.h:205`'s `unordered_map<std::string, CssStyle, SvHash, SvEqual>`. All overloads are already `noexcept`, and a minimal repro of the signatures compiles clean — the precise trigger was not isolated. Passes with gcc-15's libstdc++. |
+| 3 | `typedef bool` in `QRCode/src/qrcode.h:37` | GCC | A C header compiled as C++. |
+
+No locally-available toolchain clears all three: Clang passes 1 and fails 2;
+gcc-15 passes 2 and fails 1 and 3.
+
+**Suggested fix, upstream:** change `-Wno-c++11-narrowing` to `-Wno-narrowing`
+(or supply both), and pin a known-good toolchain in `platformio.local.ini`,
+which `AGENTS.md` designates for exactly this.
+
+Until then, verification falls back to the **native CTest suite** — which is
+where P0–P5 deliberately put almost all their logic — plus hardware.
+
 ## Prerequisites
 
-### 1. Install PlatformIO
+### 1. PlatformIO on PATH
 
-Not currently present — `pio: command not found`, and `import platformio` fails.
+Installed (6.1.19), but its venv is not on the default `PATH` in a fresh shell:
 
 ```bash
-python3 -m pip install --user pipx && pipx install platformio
-# or the official bootstrap:
-#   curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py -o /tmp/get-platformio.py
-#   python3 /tmp/get-platformio.py
+export PATH="$HOME/.platformio/penv/bin:$PATH"
+pio --version   # PlatformIO Core, version 6.1.19
 ```
 
-Verify with `pio --version`.
+The simulator source itself needs no manual clone — `platformio.ini` lists
+`simulator=https://github.com/uxjulia/crossink-simulator` under
+`[simulator-base] lib_deps`, so `pio run` fetches it into
+`.pio/libdeps/<env>/simulator/` and runs `run_simulator_project.py` from there
+as a post-build script.
+
+Note that `[simulator-base] extra_scripts` runs `scripts/gen_i18n.py` as a
+**pre** script, so translations regenerate on every simulator build — no manual
+regeneration step is needed when adding `STR_*` keys for a simulator check.
 
 ### 2. Export the Wayland environment
 
@@ -214,10 +243,14 @@ so screenshots are 1:1 with what the hardware would show.
 The simulator has real limits that matter for this project — from
 `.claude/CONTEXT.md` and `docs/simulator.md`:
 
-- **No image rendering.** `platformio.ini` ignores `hal`, `PNGdec`, and
-  `JPEGDEC`. `JPEGDEC fallback: open failed (err=-1)` is expected, not a bug.
-  This means P5 catalog **thumbnails cannot be verified in the simulator** — that
-  check is hardware-only.
+- **Image rendering: status unknown.** `.claude/CONTEXT.md:15` claims
+  `platformio.ini` ignores `PNGdec` and `JPEGDEC`, but the real line is
+  `lib_ignore = hal, WebSockets` — both decoders are in `lib_deps` (PlatformIO
+  cloned them during the build attempt) and `-DCROSSPOINT_SIM_USE_NATIVE_DECODERS`
+  is set. **That context note appears stale.** Whether P5 thumbnails render
+  could not be confirmed, because the build failure above blocks running the
+  simulator at all. Treat as unverified, and update `.claude/CONTEXT.md` once
+  the build is fixed and this is settled either way.
 - **`HalStorage` uses POSIX files under `./fs_`** and permits multiple readers,
   unlike SdFat on hardware, which allows only one open reader per path. A
   file-handle bug can therefore pass in the simulator and fail on device.

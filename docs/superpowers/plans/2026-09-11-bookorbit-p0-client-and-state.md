@@ -2410,7 +2410,7 @@ git commit -m "feat: add BookOrbit device storage and credential store"
 
 **Files:**
 - Create: `src/activities/bookorbit/BookOrbitSettingsActivity.h`, `src/activities/bookorbit/BookOrbitSettingsActivity.cpp`
-- Modify: `lib/I18n/translations/en.yaml` (add `STR_BOOKORBIT_*` keys, then regenerate)
+- Modify: `lib/I18n/translations/english.yaml` (add `STR_BOOKORBIT_*` keys, then regenerate)
 - Modify: `src/activities/settings/` — add the entry point beside the existing KOReader sync row
 - Modify: `CHANGELOG.md`
 - Reference: `src/activities/settings/KOReaderSettingsActivity.cpp` — mirror its structure
@@ -2421,7 +2421,7 @@ git commit -m "feat: add BookOrbit device storage and credential store"
 
 - [ ] **Step 1: Add translation keys**
 
-Add to `lib/I18n/translations/en.yaml`:
+Add to `lib/I18n/translations/english.yaml`:
 
 ```yaml
 STR_BOOKORBIT_TITLE: "BookOrbit Sync"
@@ -2477,7 +2477,7 @@ Under an `### Added` heading in `CHANGELOG.md`:
 
 ```bash
 find src lib -name "*.cpp" -o -name "*.h" | xargs clang-format -i
-git add src/activities/bookorbit lib/I18n/translations/en.yaml lib/I18n CHANGELOG.md src/activities/settings
+git add src/activities/bookorbit lib/I18n/translations/english.yaml lib/I18n CHANGELOG.md src/activities/settings
 git commit -m "feat: add BookOrbit sync settings screen"
 ```
 

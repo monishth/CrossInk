@@ -2422,7 +2422,7 @@ git commit -m "feat: record reading events on page turns"
 **Files:**
 - Create: `src/activities/bookorbit/BookOrbitStatsSync.{h,cpp}`
 - Modify: `src/activities/reader/BookStatsView.cpp` (read from the event log)
-- Modify: `lib/I18n/translations/en.yaml`, then regenerate
+- Modify: `lib/I18n/translations/english.yaml`, then regenerate
 - Modify: `CHANGELOG.md`
 
 **Interfaces:**
