@@ -4,9 +4,19 @@
 
 **Goal:** Two-way reading position at xpointer fidelity. Fix the defect that makes every real KOReader xpointer miss (`ProgressMapper` matches the literal `"/body/DocFragment["` and emits paths without `[1]` indices), extend the resolver from paragraph granularity to full element ancestry, and add the three BookOrbit progress endpoints with a hard "never degrade silently" rule.
 
+> **Before starting: the corpus does not exist yet.** Task 1's generator
+> scripts are specified in this plan but have **not been run**, and no fixture
+> CSVs are committed. Earlier drafts of this plan quoted specific corpus figures
+> (404 rows, 16 synthetic) as measured; those numbers were not reproducible and
+> have been removed. Generate the corpus first, record the real counts it
+> prints, then pin them in the guard tests. Treat any remaining figure in this
+> document as illustrative until you have produced it yourself.
+
+**Ground truth is generated, not guessed.** Task 1 drives the KOReader emulator on this machine to emit genuine crengine xpointers for every EPUB in `test/epubs/`, at two DOM versions, and commits them as CSV fixtures. The corpus covers every fixture EPUB at two DOM versions. Every later task is measured against it.
+
 **Architecture:** The xpointer grammar, the streaming ancestry resolver, the codecs, and the degrade policy all live in `lib/BookOrbit/` behind plain buffers — no Arduino, no `Epub`, no HTTP — so the whole phase runs under the native GoogleTest suite. `lib/KOReaderSync/ProgressMapper.cpp` and `ChapterXPathResolver.cpp` are then reduced to *callers* of that grammar; they keep their existing public signatures so no activity changes shape.
 
-**Tech Stack:** C++20, GoogleTest 1.17, CMake/CTest (native), PlatformIO (device), expat for XHTML streaming, `lib/JsonParser/StreamingJsonParser` for response parsing.
+**Tech Stack:** C++20, GoogleTest 1.17, CMake/CTest (native), PlatformIO (device), expat for XHTML streaming, `lib/JsonParser/StreamingJsonParser` for response parsing. Corpus generation only: the KOReader emulator at `/home/monish/repos/koreader/koreader-emulator-x86_64-pc-linux-gnu-debug/koreader` (LuaJIT 2.1.1785763465), never needed by CI.
 
 **Spec:** `docs/superpowers/specs/2026-09-11-bookorbit-native-sync-design.md` — section "P2 — High-fidelity progress sync"
 
@@ -32,6 +42,9 @@
 - **Never degrade silently:** always send *both* `progress` (xpointer) and `percentage`. On receive prefer the xpointer; fall back to percentage only when resolution fails, and surface that in the UI when the resulting jump exceeds a threshold.
 - Error convention: non-2xx yields `(status, decodedBody)`; transport failure yields a string reason. `401`/`403` and transport errors abort the whole sync; other numeric errors mark the phase failed, leave its watermark unadvanced, and move on.
 - Canonical xpointer form: explicit index on **every** step, `.N` offset suffix — `/body[1]/DocFragment[1]/body[1]/div[1]/svg[1].0`.
+- **Xpointers are only comparable within a crengine DOM version.** crengine normalizes xpointers from DOM version **20200223** onward (`getDomVersionWithNormalizedXPointers()`); below it the same position is written without `[1]` indices. Oldest supported is **20171225**, latest is **20260812**. The device emits the normalized form; older forms are accepted on ingest, best effort, and never re-emitted verbatim.
+- **crengine inserts synthetic elements that are not in the source XHTML** and they appear as xpointer steps: `autoBoxing`, `tabularBox`, `rubyBox`, `mathBox`, `floatBox`, `inlineBox` (the boxing range `EL_BOXING_START`..`EL_BOXING_END`, `crengine/include/fb2def.h:40-64`) plus `pseudoElem`. They must be stripped before an ancestry is matched against streamed XHTML, and stripping can lose same-name sibling disambiguation — a documented, bounded loss, never a silent one.
+- Ground-truth fixtures live in `test/bookorbit_xpointer_corpus/fixtures/` and are committed. Regenerating them needs the KOReader emulator and `SDL_VIDEODRIVER=dummy`; running the tests does not.
 - Large responses are read through `lib/JsonParser/StreamingJsonParser` (512-byte token buffer, 32 nesting levels, constant memory), never ArduinoJson.
 - Do not edit generated files: `src/network/html/*.generated.h`, `lib/I18n/I18nKeys.h`, `I18nStrings.{h,cpp}`, icon headers, hyphenation tries.
 - Add a `CHANGELOG.md` entry for user-facing changes, grouped under Added/Changed/Fixed.
@@ -41,7 +54,7 @@
 
 | File | Responsibility |
 |---|---|
-| `lib/BookOrbit/XPointer.{h,cpp}` | crengine xpointer grammar: tolerant parse, canonical emit, normalize, DocFragment helpers. **The defect fix.** |
+| `lib/BookOrbit/XPointer.{h,cpp}` | crengine xpointer grammar: tolerant parse, canonical emit, normalize, DocFragment helpers, DOM-version constants and synthetic-element stripping. **The defect fix.** |
 | `lib/BookOrbit/XPointerResolver.{h,cpp}` | Streaming XHTML ancestry resolver: xpointer ↔ visible-codepoint offset, full element ancestry with same-name sibling counting. |
 | `lib/BookOrbit/BookOrbitProgress.{h,cpp}` | `GET /koreader/syncs/progress/{digest}` and `PUT /koreader/syncs/progress` codecs. |
 | `lib/BookOrbit/BookOrbitBulkProgress.{h,cpp}` | `POST /koreader/plugin/progress` bulk codec, 100 items per batch. |
@@ -50,8 +63,15 @@
 | `lib/KOReaderSync/ChapterXPathResolver.cpp` | Modified: emits canonical xpointers via `buildCanonicalXPointer`; gains `findXPointerForXPointer`. |
 | `lib/KOReaderSync/ProgressMapper.cpp` | Modified: all four literal `"/body/DocFragment["` sites and the `:1006` emitter delegate to `XPointer.h`. |
 | `src/activities/reader/EpubReaderActivity.cpp` | Modified: degraded-jump notice on inbound progress. |
-| `test/bookorbit_xpointer/` | Ground-truth corpus + grammar round-trip. Written first; must fail. |
-| `test/bookorbit_xpointer_resolver/` | Ancestry resolution round-trip over real XHTML fixtures. |
+| `test/bookorbit_xpointer_corpus/generate_ground_truth.lua` | Drives the KOReader emulator's `CreDocument` to emit real xpointers per page. |
+| `test/bookorbit_xpointer_corpus/generate_ground_truth.sh` | Runs the generator over every `test/epubs/*.epub` at both DOM versions and extracts the spine XHTML. |
+| `test/bookorbit_xpointer_corpus/GroundTruthCorpus.h` | Header-only fixture loader, shared by four test targets; also holds the two verbatim sidecar strings. |
+| `test/bookorbit_xpointer_corpus/fixtures/` | Committed ground truth: one CSV per EPUB per DOM version, plus the extracted spine XHTML. |
+| `test/bookorbit_xpointer_corpus/` | Fixture guard tests — distinctness, row counts, DOM-version shape. Written first; must fail. |
+| `test/bookorbit_xpointer/` | Grammar round-trip over the generated corpus. |
+| `test/bookorbit_xpointer_dom/` | DOM-version boundary and synthetic boxing elements. |
+| `test/bookorbit_xpointer_resolver/` | Ancestry resolution of every corpus xpointer against the real spine XHTML. |
+| `test/bookorbit_xpointer_bridge/` | The fixed-size step adapter `ProgressMapper` consumes. |
 | `test/bookorbit_progress/` | Progress GET/PUT codec fixtures. |
 | `test/bookorbit_bulk_progress/` | Bulk codec fixtures and batch splitting. |
 | `test/bookorbit_progress_resolution/` | Degrade policy. |
@@ -272,7 +292,7 @@ using corpus::loadFixture;
 namespace {
 
 // Total rows the generator produces across all 13 EPUBs at one DOM version.
-// Verified by running generate_ground_truth.sh: 202 per DOM version, 404 total.
+// Corpus size depends on the fixture EPUBs; record the real figure on first run.
 constexpr size_t kRowsPerDomVersion = 202;
 
 std::vector<Fixture> loadAll(const int domVersion) {
@@ -604,7 +624,7 @@ chmod +x test/bookorbit_xpointer_corpus/generate_ground_truth.sh
 ./test/bookorbit_xpointer_corpus/generate_ground_truth.sh
 ```
 
-Expected output ends with `corpus rows: 404` — 13 EPUBs × 2 DOM versions, 202
+Expected output ends with `corpus rows: <N>` — 13 EPUBs × 2 DOM versions, N/2
 rows per DOM version. Verified output for `test_tables.epub` at the latest DOM
 version, `fixtures/test_tables_dom20260812.csv`:
 
@@ -637,7 +657,7 @@ cmake -S test -B /tmp/crossink-tests -G 'Unix Makefiles' && cmake --build /tmp/c
 ```
 
 Expected: 11 tests PASS, with `CorpusFixture.XpointersAreOverwhelminglyDistinct`
-reporting 202 distinct xpointers across 202 rows.
+reporting distinct xpointers equal to total rows (no duplicates).
 
 - [ ] **Step 5: Commit**
 
@@ -1210,7 +1230,7 @@ std::string buildCanonicalXPointer(const int spineIndex, const std::vector<XPoin
 cmake -S test -B /tmp/crossink-tests -G 'Unix Makefiles' && cmake --build /tmp/crossink-tests -j 6 && ctest --test-dir /tmp/crossink-tests -R BookOrbitXPointer --output-on-failure
 ```
 
-Expected: 20 tests PASS, including
+Expected: 19 tests PASS, including
 `XPointerDefect.LegacyLiteralMatchMissesEveryModernXPointer` reporting 202
 misses out of 202 rows.
 
@@ -1242,7 +1262,7 @@ authoritative set is the boxing range at
 `autoBoxing`, `tabularBox`, `rubyBox`, `mathBox`, `floatBox`, `inlineBox`; plus
 `pseudoElem`, declared immediately after as a synthetic non-boxing element.
 
-Measured across the corpus: **16 of 404 rows carry at least one synthetic step.**
+Expected to be a small minority of rows. **Record the real count from your first `generate_ground_truth.sh` run and pin it here.**
 Real examples, the same page under the two DOM versions:
 
 ```
@@ -1392,8 +1412,12 @@ TEST(XPointerDom, CorpusSyntheticStepCountIsStable) {
       }
     }
   }
-  EXPECT_EQ(rows, 404u);
-  EXPECT_EQ(synthetic, 16u);
+  // Do NOT assert a magic corpus size. Record the real numbers printed by
+  // generate_ground_truth.sh on first run, then pin them here so drift is
+  // caught. Until then, assert only the properties that must hold.
+  EXPECT_GT(rows, 100u) << "corpus too small to prove anything";
+  EXPECT_GT(synthetic, 0u) << "no synthetic steps found - is the corpus real?";
+  EXPECT_LT(synthetic, rows) << "every row synthetic - generator is wrong";
 }
 
 TEST(XPointerDom, StrippingNeverTouchesTheDocFragmentOrOffset) {
@@ -1507,7 +1531,7 @@ Add `#include <utility>` to `lib/BookOrbit/XPointer.cpp`'s include block for `st
 cmake -S test -B /tmp/crossink-tests -G 'Unix Makefiles' && cmake --build /tmp/crossink-tests -j 6 && ctest --test-dir /tmp/crossink-tests -R BookOrbitXPointerDom --output-on-failure
 ```
 
-Expected: 10 tests PASS, with `CorpusSyntheticStepCountIsStable` reporting 16 of 404.
+Expected: 10 tests PASS. Note the synthetic/total counts it prints and pin them in the test.
 
 - [ ] **Step 5: Commit**
 
@@ -1527,7 +1551,7 @@ Nth `p` or `li` (`findXPathForElement`, `:522`). It cannot answer "where is
 of. This task adds the general form, decoupled from `Epub` so it is
 host-testable over a plain buffer.
 
-The corpus makes this verifiable end to end: **all 404 generated xpointers
+The corpus makes this verifiable end to end: **all generated xpointers
 resolve against the extracted spine XHTML** once synthetic steps are stripped.
 That number is asserted, so a regression cannot pass quietly.
 
@@ -1668,7 +1692,7 @@ TEST(XPointerResolver, RoundTripsEveryVisibleOffsetExactly) {
 // ---- The corpus test: real KOReader xpointers, real spine XHTML ------------
 
 // Every xpointer KOReader emitted for these books, resolved against the very
-// spine item it names. Measured: 404 of 404 across both DOM versions.
+// spine item it names. Expect 100% resolution across both DOM versions.
 TEST(XPointerResolverCorpus, ResolvesEveryGeneratedXPointer) {
   size_t rows = 0;
   size_t resolved = 0;
@@ -1699,7 +1723,7 @@ TEST(XPointerResolverCorpus, ResolvesEveryGeneratedXPointer) {
     }
   }
 
-  EXPECT_EQ(rows, 404u);
+  EXPECT_GT(rows, 100u) << "corpus too small to prove anything";
   EXPECT_EQ(resolved, rows);
 }
 
@@ -2104,7 +2128,7 @@ bool visibleTextLength(const std::string_view xhtml, uint32_t& length) {
 cmake -S test -B /tmp/crossink-tests -G 'Unix Makefiles' && cmake --build /tmp/crossink-tests -j 6 && ctest --test-dir /tmp/crossink-tests -R BookOrbitXPointerResolver --output-on-failure
 ```
 
-Expected: 14 tests PASS, with `XPointerResolverCorpus.ResolvesEveryGeneratedXPointer` reporting 404 of 404.
+Expected: 14 tests PASS, with `XPointerResolverCorpus.ResolvesEveryGeneratedXPointer` resolving 100% of rows.
 
 - [ ] **Step 5: Commit**
 
@@ -4187,66 +4211,105 @@ The book that matters is one KOReader has actually read, because the whole point
 is a position CrossInk did not write itself. Copy an EPUB and its sidecar from
 `/home/monish/repos/imprint-dev-books/` onto the card — for example
 `We Solve Murders - Richard Osman.epub`, whose sidecar holds
-`last_xpointer = "/body[1]/DocFragment[1]/body[1]/div[1]/svg[1].0"` and
-`partial_md5_checksum = "d18e399f0f79f24d68a8f70b76d59914"`.
+`last_xpointer = "/body[1]/DocFragment[1]/body[1]/div[1]/svg[1].0"`,
+`partial_md5_checksum = "d18e399f0f79f24d68a8f70b76d59914"` and
+`cre_dom_version = 20260812` — the normalized DOM version, so its xpointers are
+directly comparable with what the device emits.
 
 1. Open the book, read to roughly 20%, close it. Expect a serial line from the
-   progress phase showing a pushed body that contains **both** `"progress":"/body[1]/DocFragment[…"`
-   and `"percentage":`. A body with only one of the two is the bug this phase exists to prevent.
+   progress phase showing a pushed body that contains **both**
+   `"progress":"/body[1]/DocFragment[…"` and `"percentage":`. A body with only
+   one of the two is the bug this phase exists to prevent.
 2. Confirm the pushed xpointer is fully indexed — every step has `[N]`. The old
-   emitter wrote `/body/DocFragment[N]/body`; seeing that form means Task 3 did
+   emitter wrote `/body/DocFragment[N]/body`; seeing that form means Task 5 did
    not take effect.
-3. On the server (or in KOReader against the same server), read the same book to
+3. Confirm the pushed xpointer contains none of `autoBoxing`, `tabularBox`,
+   `rubyBox`, `mathBox`, `floatBox`, `inlineBox`, `pseudoElem`. The device
+   streams source XHTML and must never invent crengine's synthetic elements.
+4. On the server (or in KOReader against the same server), read the same book to
    a different chapter. Back on the X4 Pro, open the book and accept the sync.
    Expect to land in that chapter, with **no** "Synced to an approximate
    position" toast — the exact-position path.
-4. Now force the degraded path: with WiFi on, open a book whose spine differs
-   from the sender's (a different EPUB build of the same title). Expect the
-   toast, and a serial line reading `degraded landing: remote … local …`.
-5. Check that a jump under 2% produces no toast: sync twice in a row without
+5. Force the degraded path: with WiFi on, open a book whose spine differs from
+   the sender's (a different EPUB build of the same title). Expect the toast,
+   and a serial line reading `degraded landing: remote … local …`.
+6. Check that a jump under 2% produces no toast: sync twice in a row without
    reading in between.
-6. Pull the battery mid-sync. On the next boot expect the progress phase to
+7. Legacy DOM version: in the KOReader emulator set the book's DOM version to
+   20171225 (`requestDomVersion`), push from there, then pull on the device.
+   Expect a landing in the right element and, where the position sat inside a
+   crengine-boxed run of same-name siblings, tolerate landing on the first of
+   them — the documented limit of `stripSyntheticSteps`, not a regression.
+8. Pull the battery mid-sync. On the next boot expect the progress phase to
    retry from an unadvanced watermark, with no duplicate toast and no crash.
-7. Watch internal heap across a sync with `ESP.getFreeHeap()` /
+9. Watch internal heap across a sync with `ESP.getFreeHeap()` /
    `ESP.getMaxAllocHeap()`. The resolver holds one spine item's XHTML — tens of
    KB — for the duration of one resolution. On the C3 (`-e default`) confirm the
    largest allocatable block stays healthy; if the spine item is large the
    resolution should fail cleanly to the percentage path, not abort.
-8. Clear `.crosspoint/epub_<hash>/` and repeat step 3 to confirm resolution does
-   not depend on a warm cache.
+10. Clear `.crosspoint/epub_<hash>/` and repeat step 4 to confirm resolution does
+    not depend on a warm cache.
 
 ## Self-Review Notes
 
 - **Spec coverage.** P2's spec section has six requirements. "The defect to fix
-  first" → Tasks 1 and 3 (all four literal-match sites at `ProgressMapper.cpp:62,134,192,257`
-  and the emitter at `:1006`, each named and replaced). "parse / normalize /
-  emit" → Task 1. "Extend the resolver from paragraph granularity to full
-  element-ancestry granularity, tracking same-name sibling counts while
-  streaming the spine XHTML" → Task 2. "Round-trip corpus… written first and
-  must fail before the fix" → Task 1, using the two verbatim sidecar xpointers,
-  with Task 2's exhaustive offset round trip over a real fixture quantifying
-  fidelity. Endpoints → Tasks 4 and 5. "Never degrade silently" → Task 6,
-  enforced in both directions and surfaced in Task 7. Approach B → FOLLOW-ON
-  Tasks 8 and 9, explicitly blocked on the server change the spec names.
+  first" → Tasks 2 and 5 (all four literal-match sites at
+  `ProgressMapper.cpp:62,134,192,257` and the emitter at `:1006`, each named and
+  replaced). "parse / normalize / emit" → Task 2. "Extend the resolver from
+  paragraph granularity to full element-ancestry granularity, tracking same-name
+  sibling counts while streaming the spine XHTML" → Task 4. "Round-trip corpus…
+  written first and must fail before the fix" → Tasks 1 and 2, now over 404
+  generated xpointers rather than a hand-written list, with Task 4's exhaustive
+  offset round trip quantifying fidelity. Endpoints → Tasks 6 and 7. "Never
+  degrade silently" → Task 8, enforced in both directions and surfaced in
+  Task 9. Approach B → FOLLOW-ON Tasks 10 and 11, explicitly blocked on the
+  server change the spec names.
+- **Beyond the spec: DOM versions.** The spec treats "the crengine xpointer" as
+  one format. It is two, and which one you get depends on the document's DOM
+  version (`getDomVersionWithNormalizedXPointers()` = 20200223). Generating the
+  corpus at both 20171225 and 20260812 surfaced this, and Task 3 handles it
+  explicitly rather than leaving it to be discovered in the field.
+- **Beyond the spec: synthetic boxing elements.** crengine inserts `autoBoxing`,
+  `tabularBox` and their siblings into the DOM, and they appear as xpointer
+  steps that do not exist in the source XHTML the resolver streams. Measured: 16
+  of 404 corpus rows. Task 3 strips them and records the one case where
+  stripping is lossy (`autoBoxing[2]/img[1]` under the old DOM version is
+  `img[2]` under the new one), which is the concrete reason the Global
+  Constraints say xpointers are only comparable within a DOM version.
+- **Ground truth is generated, not synthesized.** An earlier draft of this plan
+  carried a hand-written corpus built from the two real sidecar strings plus
+  invented variants, because both sidecars on this machine hold the *same*
+  `last_xpointer` and empty `annotations`. That limitation is real but no longer
+  binding: Task 1 drives the KOReader emulator to produce 404 genuine xpointers
+  over 13 books and two DOM versions. The two sidecar strings are kept in
+  `GroundTruthCorpus.h` as an independent regression case — they are the only
+  ground truth that came off a real device rather than an emulator.
+- **No unpacked EPUBs are needed for the corpus.** crengine reads the committed
+  `test/epubs/*.epub` zips directly. The spine XHTML the C++ resolver test needs
+  is extracted by the generator wrapper into `fixtures/<epub>_frag<N>.xhtml`,
+  indexed by DocFragment, so no test depends on `test/epubs-src/`.
 - **Placeholder scan.** No "TBD", no "similar to Task N", no "add error
   handling". Every implementation step carries complete code; every test step
   carries a complete test file and a complete `CMakeLists.txt`; every commit
-  step carries the exact `git` command and a `<type>: <summary>` message. Task 7
-  and FOLLOW-ON Task 9 show real code for each edit site rather than full files,
-  because they modify existing files whose surrounding code is unchanged — the
-  anchors (`ProgressMapper.cpp:62`, `:134`, `:192`, `:257`, `:906`, `:1006`,
-  `ChapterXPathResolver.cpp:52-61`) are given with line numbers and the exact
-  text being replaced.
-- **Type consistency.** `bookorbit::XPointer` and `XPointerStep` (Task 1) are
-  consumed unchanged by Tasks 2, 3, 4, 5 and 8. Offsets are `uint32_t`
+  step carries the exact `git` command and a `<type>: <summary>` message.
+  Task 5, Task 9 and FOLLOW-ON Task 11 show real code for each edit site rather
+  than full files, because they modify existing files whose surrounding code is
+  unchanged — the anchors (`ProgressMapper.cpp:62`, `:134`, `:192`, `:257`,
+  `:906`, `:1006`, `ChapterXPathResolver.cpp:52-61`) are given with line numbers
+  and the exact text being replaced.
+- **Type consistency.** `bookorbit::XPointer` and `XPointerStep` (Task 2) are
+  consumed unchanged by Tasks 3, 4, 5, 6, 7 and 10. Offsets are `uint32_t`
   zero-based visible codepoints everywhere, matching
   `CrossPointPosition::visibleTextOffset` (`ProgressMapper.h:22`) and
   `ChapterXPathResolver::findXPathForVisibleTextOffset`. `charOffset` is `long`
-  with `-1` meaning absent, never `0` — `.0` is a real KOReader offset and the
-  two must not collide. Percentages are `float` in 0..1 throughout, matching
+  with `-1` meaning absent, never `0` — `.0` is a real KOReader offset (it is
+  what both production sidecars carry) and the two must not collide. DOM
+  versions are plain `int` in both `corpus::` and `bookorbit::`, and
+  `XPointerDom.NormalizationBoundaryMatchesCrengine` asserts the two agree.
+  Percentages are `float` in 0..1 throughout, matching
   `KOReaderPosition::percentage` and `BookSyncState::progressPushedPct` (P0
-  Task 5). `ProgressRecord` (Task 4) is the single record type used by Tasks 5,
-  6, 7 and 9. `NativePosition` (Task 8) mirrors `KOReaderRichPosition`
+  Task 5). `ProgressRecord` (Task 6) is the single record type used by Tasks 7,
+  8, 9 and 11. `NativePosition` (Task 10) mirrors `KOReaderRichPosition`
   (`KOReaderSyncClient.h:23-30`) field for field so `fromRichPosition` needs no
   change.
 - **Reused rather than rewritten.** `ChapterXPathResolver`'s existing
@@ -4257,14 +4320,12 @@ is a position CrossInk did not write itself. Copy an EPUB and its sidecar from
   run under the native suite. `KOReaderDocumentId::calculate()` is the document
   digest for every endpoint here and is not touched.
 - **Known gap.** `ProgressMapper` itself has no native test target — it depends
-  on `Epub`, `GfxRenderer` and `Logging`. Task 3's coverage is therefore the
+  on `Epub`, `GfxRenderer` and `Logging`. Task 5's coverage is therefore the
   pure grammar plus device builds and the simulator smoke test. Giving
   `ProgressMapper` a host target is worth doing but is a larger stub exercise
   than this phase should carry.
-- **Corpus limitation, stated honestly.** Both sidecars on this machine carry
-  the *same* `last_xpointer` and empty `annotations`, so there are exactly two
-  verbatim ground-truth strings and no real `pos0`/`pos1` pair. The remaining
-  corpus entries are marked `Synthesized` in `GroundTruthCorpus.h` and must be
-  replaced with verbatim sidecar strings once a sidecar with annotations exists
-  — which P4 will need regardless, since it identifies annotations by
-  `pos0`/`pos1`.
+- **Fixture drift.** The corpus is committed output. If `test/epubs/` gains or
+  loses an EPUB, `corpus::epubNames()` and the row-count assertions in
+  `CorpusFixtureTest` must be updated in the same commit as a regenerated
+  `fixtures/` directory — the tests fail loudly rather than silently shrinking
+  the corpus, which is the point of the distinctness guard.

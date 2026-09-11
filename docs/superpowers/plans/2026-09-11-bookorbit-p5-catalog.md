@@ -31,6 +31,7 @@
 - Do not edit generated files: `src/network/html/*.generated.h`, `lib/I18n/I18nKeys.h`, `I18nStrings.{h,cpp}`, icon headers, hyphenation tries.
 - Add a `CHANGELOG.md` entry for user-facing changes, grouped under Added/Changed/Fixed.
 - Verification per task: `ctest --test-dir /tmp/crossink-tests --output-on-failure`. Device-touching tasks additionally: `pio run -e x4-pro` and `pio run -e default`.
+- The simulator env is recorded as broken on this machine for pre-existing reasons (`docs/superpowers/specs/2026-09-11-bookorbit-assumptions.md`, 8.4). Its failure is never a P5 regression; do not repair it inside this phase.
 
 ### P5-specific constraints
 
@@ -4098,3 +4099,744 @@ git commit -m "feat: add BookOrbit catalog read-status and rating mutations"
 ```
 
 ---
+
+### Task 10: Same-origin redirect rule and the device streaming bindings
+
+**Files:**
+- Create: `lib/BookOrbit/SameOrigin.h`, `lib/BookOrbit/SameOrigin.cpp`
+- Create: `test/bookorbit_same_origin/CMakeLists.txt`, `test/bookorbit_same_origin/SameOriginTest.cpp`
+- Modify: `test/CMakeLists.txt`
+- Create: `src/network/BookOrbitFileSink.h`, `src/network/BookOrbitFileSink.cpp`
+- Create: `src/network/BookOrbitDocumentHasher.h`, `src/network/BookOrbitDocumentHasher.cpp`
+- Create: `src/network/BookOrbitStreamDownloader.h`, `src/network/BookOrbitStreamDownloader.cpp`
+- Reference: `src/activities/browser/OpdsBookBrowserActivity.cpp:668-703` — the existing cancel/progress pump to mirror
+
+**Interfaces:**
+- Consumes: `PartFileWriter`, `IFileSink` (Task 6); `IDocumentHasher` (Task 7); `ThumbnailGate` (Task 8); `freeink::SecureHttpClient`; `KOReaderDocumentId::calculate` (`lib/KOReaderSync/KOReaderDocumentId.h:27`); `Storage` / `FsFile` (`lib/hal`).
+- Produces:
+  `std::string bookorbit::originOf(std::string_view url)`;
+  `bool bookorbit::isSameOrigin(std::string_view a, std::string_view b)`;
+  `constexpr int bookorbit::kMaxRedirectHops = 5`;
+  `class BookOrbitFileSink : public bookorbit::IFileSink`;
+  `class BookOrbitDocumentHasher : public bookorbit::IDocumentHasher`;
+  `class BookOrbitStreamDownloader` with
+  `BookOrbitStreamDownloader(const char* caCertPem, std::string username, std::string userkey)`,
+  `using ProgressFn = bool (*)(void* ctx, size_t downloaded, size_t total)`,
+  `bookorbit::Error downloadTo(const std::string& url, bookorbit::PartFileWriter& writer, size_t expectedBytes, ProgressFn progress, void* progressCtx)`,
+  `bookorbit::Error downloadThumbnail(const std::string& url, bookorbit::ThumbnailGate& gate)`.
+
+The pure part — origin comparison — is host-tested first, because that is the part the redirect cap depends on for correctness. The `SecureHttpClient` binding itself is verified by build plus hardware, as P0 Tasks 8–9 do.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `test/bookorbit_same_origin/SameOriginTest.cpp`:
+
+```cpp
+#include <gtest/gtest.h>
+
+#include "lib/BookOrbit/SameOrigin.h"
+
+using bookorbit::isSameOrigin;
+using bookorbit::originOf;
+
+TEST(OriginOf, ExtractsSchemeHostAndExplicitPort) {
+  EXPECT_EQ(originOf("https://books.example.com:8443/api/v1/x"), "https://books.example.com:8443");
+}
+
+TEST(OriginOf, FillsInTheDefaultPortPerScheme) {
+  EXPECT_EQ(originOf("https://books.example.com/api/v1"), "https://books.example.com:443");
+  EXPECT_EQ(originOf("http://books.example.com/api/v1"), "http://books.example.com:80");
+}
+
+TEST(OriginOf, LowercasesSchemeAndHost) {
+  EXPECT_EQ(originOf("HTTPS://Books.Example.COM/x"), "https://books.example.com:443");
+}
+
+TEST(OriginOf, HandlesAUrlWithNoPath) {
+  EXPECT_EQ(originOf("https://books.example.com"), "https://books.example.com:443");
+}
+
+TEST(OriginOf, RejectsMalformedUrls) {
+  EXPECT_EQ(originOf(""), "");
+  EXPECT_EQ(originOf("books.example.com/x"), "");
+  EXPECT_EQ(originOf("ftp://books.example.com/x"), "");
+}
+
+TEST(IsSameOrigin, AcceptsADifferentPathOnTheSameHost) {
+  EXPECT_TRUE(isSameOrigin("https://books.example.com/api/v1/a", "https://books.example.com/files/b"));
+}
+
+TEST(IsSameOrigin, AcceptsAnExplicitDefaultPort) {
+  EXPECT_TRUE(isSameOrigin("https://books.example.com/a", "https://books.example.com:443/b"));
+}
+
+TEST(IsSameOrigin, RejectsADifferentHost) {
+  EXPECT_FALSE(isSameOrigin("https://books.example.com/a", "https://cdn.example.com/b"));
+}
+
+TEST(IsSameOrigin, RejectsADifferentPort) {
+  EXPECT_FALSE(isSameOrigin("https://books.example.com/a", "https://books.example.com:8443/b"));
+}
+
+// A redirect that drops TLS would send the auth headers in clear. Refused.
+TEST(IsSameOrigin, RejectsASchemeDowngrade) {
+  EXPECT_FALSE(isSameOrigin("https://books.example.com/a", "http://books.example.com/b"));
+}
+
+TEST(IsSameOrigin, RejectsMalformedTargets) {
+  EXPECT_FALSE(isSameOrigin("https://books.example.com/a", "/files/b"));
+  EXPECT_FALSE(isSameOrigin("https://books.example.com/a", ""));
+}
+```
+
+Create `test/bookorbit_same_origin/CMakeLists.txt`:
+
+```cmake
+add_executable(SameOriginTest
+  SameOriginTest.cpp
+  ${REPO_ROOT}/lib/BookOrbit/SameOrigin.cpp
+)
+
+target_include_directories(SameOriginTest PRIVATE
+  ${REPO_ROOT}/lib/BookOrbit
+)
+
+target_link_libraries(SameOriginTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(SameOriginTest)
+```
+
+Add to `test/CMakeLists.txt`:
+
+```cmake
+add_subdirectory(bookorbit_same_origin)
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+```bash
+cmake -S test -B /tmp/crossink-tests -G 'Unix Makefiles' && cmake --build /tmp/crossink-tests -j 6
+```
+
+Expected: build FAILS — `lib/BookOrbit/SameOrigin.h: No such file or directory`.
+
+- [ ] **Step 3: Write minimal implementation**
+
+Create `lib/BookOrbit/SameOrigin.h`:
+
+```cpp
+#pragma once
+
+#include <string>
+#include <string_view>
+
+namespace bookorbit {
+
+// Redirect hop cap for catalog transfers. Five is enough for a server behind a
+// path rewrite and a signed-URL handoff, and bounded enough that a redirect
+// loop cannot hold the device's only socket open.
+constexpr int kMaxRedirectHops = 5;
+
+// "scheme://host:port" with the scheme and host lowercased and the port always
+// explicit, so a default port compares equal to a written-out one. Returns ""
+// for anything that is not an absolute http(s) URL.
+std::string originOf(std::string_view url);
+
+// True when both URLs resolve to the same origin. A scheme downgrade is never
+// the same origin: following one would put the x-auth-key header on the wire
+// in clear.
+bool isSameOrigin(std::string_view a, std::string_view b);
+
+}  // namespace bookorbit
+```
+
+Create `lib/BookOrbit/SameOrigin.cpp`:
+
+```cpp
+#include "SameOrigin.h"
+
+namespace bookorbit {
+namespace {
+
+char lower(const char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; }
+
+std::string toLower(const std::string_view value) {
+  std::string out;
+  out.reserve(value.size());
+  for (const char c : value) out.push_back(lower(c));
+  return out;
+}
+
+}  // namespace
+
+std::string originOf(const std::string_view url) {
+  const auto schemeEnd = url.find("://");
+  if (schemeEnd == std::string_view::npos) return {};
+
+  const std::string scheme = toLower(url.substr(0, schemeEnd));
+  const char* defaultPort = nullptr;
+  if (scheme == "https") {
+    defaultPort = "443";
+  } else if (scheme == "http") {
+    defaultPort = "80";
+  } else {
+    return {};
+  }
+
+  const std::string_view rest = url.substr(schemeEnd + 3);
+  const auto pathStart = rest.find('/');
+  const std::string_view authority = pathStart == std::string_view::npos ? rest : rest.substr(0, pathStart);
+  if (authority.empty()) return {};
+
+  const auto portStart = authority.rfind(':');
+  std::string_view host = authority;
+  std::string_view port(defaultPort);
+  if (portStart != std::string_view::npos && portStart + 1 < authority.size()) {
+    host = authority.substr(0, portStart);
+    port = authority.substr(portStart + 1);
+  }
+  if (host.empty()) return {};
+
+  std::string origin = scheme;
+  origin += "://";
+  origin += toLower(host);
+  origin += ':';
+  origin.append(port);
+  return origin;
+}
+
+bool isSameOrigin(const std::string_view a, const std::string_view b) {
+  const std::string left = originOf(a);
+  if (left.empty()) return false;
+  return left == originOf(b);
+}
+
+}  // namespace bookorbit
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+```bash
+cmake --build /tmp/crossink-tests -j 6 && ctest --test-dir /tmp/crossink-tests -R "OriginOf|IsSameOrigin" --output-on-failure
+```
+
+Expected: 11 tests PASS.
+
+- [ ] **Step 5: Write the device bindings**
+
+Create `src/network/BookOrbitFileSink.h`:
+
+```cpp
+#pragma once
+#include <HalStorage.h>
+#include <SdFat.h>
+
+#include <string>
+
+#include "BookOrbit/IFileSink.h"
+
+/**
+ * IFileSink over the HAL storage layer. Holds at most one open FsFile — on
+ * real hardware only one reader can hold a file open at a time — and closes it
+ * explicitly in every exit path, including the destructor.
+ */
+class BookOrbitFileSink final : public bookorbit::IFileSink {
+ public:
+  ~BookOrbitFileSink() override { close(); }
+
+  bool open(std::string_view path) override;
+  bool write(const uint8_t* data, size_t len) override;
+  bool close() override;
+  bool publish(std::string_view from, std::string_view to) override;
+  bool remove(std::string_view path) override;
+  bool exists(std::string_view path) override;
+
+ private:
+  FsFile file_;
+  bool open_ = false;
+  // string_view::data() is not null-terminated, so every path crossing into the
+  // C storage API is materialized here first.
+  std::string scratch_;
+};
+```
+
+Create `src/network/BookOrbitFileSink.cpp`:
+
+```cpp
+#include "BookOrbitFileSink.h"
+
+#include <Logging.h>
+
+namespace {
+constexpr const char* kTag = "BOFILE";
+}
+
+bool BookOrbitFileSink::open(const std::string_view path) {
+  close();
+  scratch_.assign(path);
+  if (!Storage.remove(scratch_.c_str()) && Storage.exists(scratch_.c_str())) {
+    LOG_ERR(kTag, "Could not clear %s", scratch_.c_str());
+    return false;
+  }
+  file_ = Storage.open(scratch_.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
+  if (!file_) {
+    LOG_ERR(kTag, "Could not open %s for writing", scratch_.c_str());
+    return false;
+  }
+  open_ = true;
+  return true;
+}
+
+bool BookOrbitFileSink::write(const uint8_t* data, const size_t len) {
+  if (!open_) {
+    LOG_ERR(kTag, "Write with no file open");
+    return false;
+  }
+  if (file_.write(data, len) != len) {
+    LOG_ERR(kTag, "Short write of %u bytes", static_cast<unsigned>(len));
+    return false;
+  }
+  return true;
+}
+
+bool BookOrbitFileSink::close() {
+  if (!open_) return true;
+  file_.flush();
+  file_.sync();
+  file_.close();
+  open_ = false;
+  return true;
+}
+
+bool BookOrbitFileSink::publish(const std::string_view from, const std::string_view to) {
+  close();
+  const std::string source(from);
+  const std::string target(to);
+  // Remove any stale target first: rename over an existing name is not
+  // guaranteed by SdFat.
+  Storage.remove(target.c_str());
+  if (!Storage.rename(source.c_str(), target.c_str())) {
+    LOG_ERR(kTag, "Could not publish %s -> %s", source.c_str(), target.c_str());
+    return false;
+  }
+  return true;
+}
+
+bool BookOrbitFileSink::remove(const std::string_view path) {
+  const std::string target(path);
+  return Storage.remove(target.c_str());
+}
+
+bool BookOrbitFileSink::exists(const std::string_view path) {
+  const std::string target(path);
+  return Storage.exists(target.c_str());
+}
+```
+
+Create `src/network/BookOrbitDocumentHasher.h`:
+
+```cpp
+#pragma once
+#include <string>
+
+#include "BookOrbit/CatalogSyncKey.h"
+
+/**
+ * IDocumentHasher over the existing KOReaderDocumentId::calculate() — 12
+ * offsets at 1024 << 2i, 1024 bytes each. This is deliberately the same code
+ * KOSync already uses: the hash it returns is BookOrbit's only book key, so a
+ * second implementation would be a second source of truth.
+ *
+ * Note the spec's first correction: BookOrbit forbids the FILENAME match
+ * method, so this never calls calculateFromFilename() regardless of the KOSync
+ * setting.
+ */
+class BookOrbitDocumentHasher final : public bookorbit::IDocumentHasher {
+ public:
+  std::string partialMd5(std::string_view path) override;
+};
+```
+
+Create `src/network/BookOrbitDocumentHasher.cpp`:
+
+```cpp
+#include "BookOrbitDocumentHasher.h"
+
+#include <Logging.h>
+
+#include "KOReaderSync/KOReaderDocumentId.h"
+
+std::string BookOrbitDocumentHasher::partialMd5(const std::string_view path) {
+  // string_view::data() is not null-terminated; KOReaderDocumentId takes a
+  // std::string, so materialize once here.
+  const std::string filePath(path);
+  std::string hash = KOReaderDocumentId::calculate(filePath);
+  if (hash.empty()) {
+    LOG_ERR("BOHASH", "Partial MD5 failed for %s", filePath.c_str());
+  }
+  return hash;
+}
+```
+
+Create `src/network/BookOrbitStreamDownloader.h`:
+
+```cpp
+#pragma once
+#include <SecureHttpClient.h>
+
+#include <cstddef>
+#include <string>
+
+#include "BookOrbit/BookOrbitError.h"
+#include "BookOrbit/CatalogDownload.h"
+#include "BookOrbit/CatalogThumbnail.h"
+
+/**
+ * Streams a catalog file or thumbnail straight into a PartFileWriter.
+ *
+ * Never buffers a body: SecureHttpClient's DataCallback GET overload hands
+ * each socket chunk to the writer, which appends it to the .part file. Peak RAM
+ * is the client's own 2 KB chunk regardless of file size, which is what keeps a
+ * large book safe on an ESP32-C3.
+ *
+ * Redirects are followed up to bookorbit::kMaxRedirectHops and only within the
+ * request's own origin; a cross-origin or scheme-downgrading hop is refused
+ * rather than followed, because the auth headers travel with the request.
+ */
+class BookOrbitStreamDownloader {
+ public:
+  // Plain function pointer rather than std::function: this is called once per
+  // socket chunk, and AGENTS.md asks hot paths to avoid std::function.
+  using ProgressFn = bool (*)(void* ctx, size_t downloaded, size_t total);
+
+  BookOrbitStreamDownloader(const char* caCertPem, std::string username, std::string userkey)
+      : caCertPem_(caCertPem), username_(std::move(username)), userkey_(std::move(userkey)) {}
+
+  bookorbit::Error downloadTo(const std::string& url, bookorbit::PartFileWriter& writer,
+                              size_t expectedBytes, ProgressFn progress, void* progressCtx);
+
+  bookorbit::Error downloadThumbnail(const std::string& url, bookorbit::ThumbnailGate& gate);
+
+ private:
+  void configure(freeink::SecureHttpClient& http, const std::string& url, const char* accept);
+
+  const char* caCertPem_;
+  std::string username_;
+  std::string userkey_;
+};
+```
+
+Create `src/network/BookOrbitStreamDownloader.cpp`:
+
+```cpp
+#include "BookOrbitStreamDownloader.h"
+
+#include <Logging.h>
+
+#include "BookOrbit/SameOrigin.h"
+
+namespace {
+constexpr const char* kTag = "BODL";
+
+struct ProgressBridge {
+  BookOrbitStreamDownloader::ProgressFn fn = nullptr;
+  void* ctx = nullptr;
+};
+
+}  // namespace
+
+void BookOrbitStreamDownloader::configure(freeink::SecureHttpClient& http, const std::string& url,
+                                          const char* accept) {
+  // The spec's second correction: certificates are verified against a
+  // user-supplied PEM root. setInsecure() is never called here.
+  http.setCACert(caCertPem_);
+  http.setFollowRedirects(bookorbit::kMaxRedirectHops);
+  http.setAllowRedirectDowngrade(false);
+  http.setUserAgent("CrossInk-BookOrbit/1.0");
+  http.begin(url);
+  http.addHeader("accept", accept);
+  http.addHeader("x-auth-user", username_);
+  http.addHeader("x-auth-key", userkey_);
+}
+
+bookorbit::Error BookOrbitStreamDownloader::downloadTo(const std::string& url,
+                                                       bookorbit::PartFileWriter& writer,
+                                                       const size_t expectedBytes, const ProgressFn progress,
+                                                       void* progressCtx) {
+  if (bookorbit::originOf(url).empty()) {
+    LOG_ERR(kTag, "Refusing a non-absolute download URL");
+    return {bookorbit::Status::ClientError, 0};
+  }
+
+  freeink::SecureHttpClient http;
+  configure(http, url, "application/octet-stream");
+
+  ProgressBridge bridge{progress, progressCtx};
+  if (progress != nullptr) {
+    http.setProgressCallback([&bridge, expectedBytes](const size_t downloaded, const size_t total) {
+      return bridge.fn(bridge.ctx, downloaded, total > 0 ? total : expectedBytes);
+    });
+  }
+
+  if (!writer.begin()) {
+    http.end();
+    return {bookorbit::Status::ClientError, 0};
+  }
+
+  bool aborted = false;
+  const int status = http.GET(
+      [&writer, &aborted](const uint8_t* data, const size_t len) {
+        if (!writer.onData(data, len)) {
+          aborted = true;
+          return false;
+        }
+        return true;
+      },
+      [&aborted] { return aborted; });
+  http.end();
+
+  if (aborted) {
+    writer.abandon();
+    // The cap is the only abort this layer raises on its own; a cancel comes
+    // through the progress callback and is reported the same way.
+    LOG_ERR(kTag, "Download aborted after %u bytes", static_cast<unsigned>(writer.bytes()));
+    return {bookorbit::Status::ClientError, status};
+  }
+  if (status < 0) {
+    writer.abandon();
+    return {bookorbit::Status::Transport, 0};
+  }
+  if (status < 200 || status >= 300) {
+    // A 3xx reaching here means following stopped: either the hop budget ran
+    // out or SecureHttpClient refused a downgrade.
+    writer.abandon();
+    return bookorbit::classify(status, false);
+  }
+  return {bookorbit::Status::Ok, status};
+}
+
+bookorbit::Error BookOrbitStreamDownloader::downloadThumbnail(const std::string& url,
+                                                              bookorbit::ThumbnailGate& gate) {
+  freeink::SecureHttpClient http;
+  configure(http, url, bookorbit::kThumbnailAccept);
+
+  bool aborted = false;
+  bool headersChecked = false;
+  const int status = http.GET(
+      [&gate, &http, &aborted, &headersChecked](const uint8_t* data, const size_t len) {
+        if (!headersChecked) {
+          headersChecked = true;
+          // Checked on the first chunk, which is the first point the response
+          // headers are available; the gate has opened no file before this.
+          if (!gate.onHeaders(http.header("content-type"))) {
+            aborted = true;
+            return false;
+          }
+        }
+        if (!gate.onData(data, len)) {
+          aborted = true;
+          return false;
+        }
+        return true;
+      },
+      [&aborted] { return aborted; });
+  http.end();
+
+  if (aborted) {
+    LOG_ERR(kTag, "Thumbnail refused or capped");
+    return {bookorbit::Status::ClientError, status};
+  }
+  if (status < 0) return {bookorbit::Status::Transport, 0};
+  return bookorbit::classify(status, false);
+}
+```
+
+> If `SecureHttpClient` exposes no `header(name)` accessor, add one to the SDK
+> (`freeink-sdk/libs/network/SecureNet/include/SecureHttpClient.h`) returning the
+> collected response header value, and advance the submodule gitlink in the same
+> commit — `AGENTS.md` requires the parent repo to move the pointer for an SDK
+> change. Do not work around it by buffering the body to sniff magic bytes: the
+> spec's rule is a `Content-Type` check.
+
+- [ ] **Step 6: Verify the device bindings build**
+
+```bash
+pio run -e x4-pro && pio run -e default && pio run -e sticky
+pio check -e default --fail-on-defect low
+```
+
+Expected: all three link; static analysis reports no new defect.
+
+- [ ] **Step 7: Commit**
+
+```bash
+find src lib -name "*.cpp" -o -name "*.h" | xargs clang-format -i
+git add lib/BookOrbit/SameOrigin.h lib/BookOrbit/SameOrigin.cpp test/bookorbit_same_origin test/CMakeLists.txt src/network/BookOrbitFileSink.h src/network/BookOrbitFileSink.cpp src/network/BookOrbitDocumentHasher.h src/network/BookOrbitDocumentHasher.cpp src/network/BookOrbitStreamDownloader.h src/network/BookOrbitStreamDownloader.cpp
+git commit -m "feat: add BookOrbit streaming download transport and file sink"
+```
+
+---
+
+### Task 11: Catalog browse activity
+
+**Files:**
+- Create: `src/activities/bookorbit/BookOrbitCatalogActivity.h`, `src/activities/bookorbit/BookOrbitCatalogActivity.cpp`
+- Modify: `lib/I18n/translations/english.yaml` (add `STR_BOOKORBIT_CATALOG_*` keys, then regenerate)
+- Modify: `src/activities/bookorbit/BookOrbitSettingsActivity.cpp` — add the "Browse library" row (P0 Task 10 created this screen)
+- Modify: `CHANGELOG.md`
+- Reference: `src/activities/browser/OpdsBookBrowserActivity.{h,cpp}` — mirror its structure exactly
+
+**Interfaces:**
+- Consumes: `CatalogApi` (Tasks 4, 9), `ManifestEnumerator` (Task 5), `PartFileWriter` (Task 6), `finalizeDownload` / `DownloadedBook` (Task 7), `ThumbnailGate` (Task 8), `BookOrbitFileSink` / `BookOrbitDocumentHasher` / `BookOrbitStreamDownloader` (Task 10), `BookOrbitCredentialStore` / `BookOrbitHttpTransport` / `CapabilityCache` (P0 Tasks 3, 8, 9).
+- Produces: a browse screen. No API consumed by later tasks.
+
+- [ ] **Step 1: Add translation keys**
+
+Add to `lib/I18n/translations/english.yaml`:
+
+```yaml
+STR_BOOKORBIT_CATALOG: "BookOrbit library"
+STR_BOOKORBIT_BROWSE: "Browse library"
+STR_BOOKORBIT_DASHBOARD: "Home"
+STR_BOOKORBIT_DISCOVER: "Discover"
+STR_BOOKORBIT_CONTINUE_READING: "Continue reading"
+STR_BOOKORBIT_ALL_BOOKS: "All books"
+STR_BOOKORBIT_LIBRARIES: "Libraries"
+STR_BOOKORBIT_COLLECTIONS: "Collections"
+STR_BOOKORBIT_SERIES: "Series"
+STR_BOOKORBIT_NEXT_PAGE: "Next page"
+STR_BOOKORBIT_PREVIOUS_PAGE: "Previous page"
+STR_BOOKORBIT_EMPTY_SECTION: "Nothing here yet"
+STR_BOOKORBIT_ON_DEVICE: "On device"
+STR_BOOKORBIT_DOWNLOADING: "Downloading"
+STR_BOOKORBIT_DOWNLOAD_FAILED: "Download failed"
+STR_BOOKORBIT_DOWNLOAD_TOO_LARGE: "File is larger than expected"
+STR_BOOKORBIT_DOWNLOAD_CANCELLED: "Download cancelled"
+STR_BOOKORBIT_HASH_FAILED: "Could not identify the downloaded book"
+STR_BOOKORBIT_CATALOG_UNAVAILABLE: "Library unavailable"
+STR_BOOKORBIT_MARK_READING: "Mark as reading"
+STR_BOOKORBIT_MARK_FINISHED: "Mark as finished"
+STR_BOOKORBIT_RATE: "Rate"
+STR_BOOKORBIT_CLEAR_RATING: "Clear rating"
+```
+
+Regenerate:
+
+```bash
+python3 scripts/gen_i18n.py lib/I18n/translations lib/I18n
+```
+
+Do not hand-edit `lib/I18n/I18nKeys.h` or `I18nStrings.{h,cpp}` — they are generated.
+
+- [ ] **Step 2: Write the activity**
+
+Mirror `OpdsBookBrowserActivity` (`src/activities/browser/OpdsBookBrowserActivity.h`) structurally,
+because the interaction is the same shape and the fork must stay mergeable:
+
+- Same `BrowserState` machine: `CHECK_WIFI → WIFI_SELECTION → LOADING → BROWSING → DOWNLOADING → ERROR → SEARCH_INPUT`.
+- Same FreeInkUI runtime: `using UiApp = freeink::ui::FreeInkApp<24, 4>;`, a `freeink::ui::GfxRendererTarget uiTarget` declared **before** `app`, `applySharedUiTheme(app, uiTarget)` in `onEnter()`, and `std::atomic<bool> uiReady` guarding `app.route()` because `render()` and `loop()` run on different tasks.
+- Same list components: one `screenHeader()` with `TouchHeaderBackButton`, one row-per-entry list built through `UIScale`/`UITheme`, `visibleRows` set by the screen builder, `topIndex` decoupled from `selectorIndex`, `ButtonNavigator` for button targets.
+- Same static handlers registered in `onEnter()`: `ACTION_ROW`, `ACTION_SEARCH`, `ACTION_CANCEL`.
+- Same download pump (`OpdsBookBrowserActivity.cpp:668-703`): the activity loop is blocked for the transfer, so `mappedInput.update()`, the Home gesture, a Back press and a routed touch snapshot are all pumped from the progress callback, throttled by `DOWNLOAD_PROGRESS_STEP_PERCENT` (5) and `DOWNLOAD_PROGRESS_MIN_UPDATE_MS` (5000).
+
+What differs from the OPDS screen, and why:
+
+| Aspect | OPDS | BookOrbit |
+|---|---|---|
+| Navigation model | `navigationHistory` of feed URLs | a stack of `{kind, section, query}` contexts, because pagination is a query parameter rather than a link |
+| Paging | follow `next` link | `CatalogQuery::set("page", n)`; enable the next-page row on `page.hasNext` |
+| Entry buffer | `std::unique_ptr<OpdsEntry[]>` sized `MAX_OPDS_FEED_ENTRIES + 2` | `CatalogPage` / `CatalogEntryPage`, already bounded at `kMaxPageItems` by the decoder — allocate once in `onEnter()`, reuse per fetch, release in `onExit()` |
+| Dashboard | none | one `dashboard()` call builds Continue-reading plus shelf rows; each `dashboardSection()` row is added **only** when `capabilities.get(kCapDashboardSections) != Capability::Unsupported`, so an older server simply shows fewer rows with no error |
+| Download | `HttpDownloader::downloadToFile` straight to the final name | `PartFileWriter` + `BookOrbitStreamDownloader::downloadTo`, then `finalizeDownload()`; the resulting `DownloadedBook.hash` is stored so the book is syncable at once |
+| After download | `clearBookCache(filename)` | `clearBookCache(path)` **and** seed `BookSyncState` under `DownloadedBook.hash` |
+
+State-to-message mapping, all through `tr(STR_*)`:
+`Status::Ok` → return to `BROWSING`;
+`Status::Unauthorized` → `STR_BOOKORBIT_AUTH_FAILED` (P0 key);
+`Status::Transport` → `STR_BOOKORBIT_UNREACHABLE` (P0 key);
+`Status::NotFound` / `Status::ServerError` / `Status::InvalidJson` → `STR_BOOKORBIT_CATALOG_UNAVAILABLE`;
+a `writer.capExceeded()` abort → `STR_BOOKORBIT_DOWNLOAD_TOO_LARGE`;
+a cancel → `STR_BOOKORBIT_DOWNLOAD_CANCELLED`;
+`finalizeDownload()` returning false → `STR_BOOKORBIT_HASH_FAILED`.
+
+Lifecycle, per `AGENTS.md`: allocate the client, transport, sink, hasher and page buffers in `onEnter()`; release them in reverse order in `onExit()`; close any open `FsFile` in `onExit()`; and override `preventAutoSleep()` during `DOWNLOADING` exactly as the OPDS activity does.
+
+Memory note to carry in the file: the activity adds no body or file buffer of its own. The only per-screen allocations are the bounded page vectors, which is why this screen is buildable for `-e default` (C3) and not capability-gated.
+
+- [ ] **Step 3: Add the entry point**
+
+In `src/activities/bookorbit/BookOrbitSettingsActivity.cpp`, add a "Browse library" row beside the
+existing "Test connection" row, enabled only when a server URL and username are configured, pushing
+`BookOrbitCatalogActivity` via the activity manager's navigation API.
+
+- [ ] **Step 4: Verify it builds and runs**
+
+```bash
+pio run -e x4-pro && pio run -e default && pio run -e sticky
+ctest --test-dir /tmp/crossink-tests --output-on-failure
+```
+
+Expected: all three device targets link and the full CTest suite is green.
+
+Then attempt the simulator, which `docs/superpowers/specs/2026-09-11-bookorbit-assumptions.md` (8.4)
+records as **currently broken on this machine for reasons predating this work**:
+
+```bash
+pio run -e simulator && ./scripts/run_simulator_smoke_test.py
+```
+
+If it still fails to build, do **not** treat that as a P5 regression and do not attempt to fix the
+simulator here. Record the failure, and rely on the CTest suite plus the Hardware Verification
+section below — which is where the streaming and `.part` behaviour is actually proven anyway.
+
+- [ ] **Step 5: Add the changelog entry**
+
+Under an `### Added` heading in `CHANGELOG.md`:
+
+```markdown
+- Browse your BookOrbit library on the device: libraries, collections, series, search and filters, with covers.
+- Download books from BookOrbit over Wi-Fi. A downloaded book is identified by its KOReader partial MD5 immediately, so reading progress, statistics and highlights sync for it right away.
+- Set a book's reading status and rating from the BookOrbit library screen.
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+find src lib -name "*.cpp" -o -name "*.h" | xargs clang-format -i
+git add src/activities/bookorbit lib/I18n/translations/english.yaml lib/I18n CHANGELOG.md
+git commit -m "feat: add BookOrbit catalog browse and download screen"
+```
+
+---
+
+## Hardware Verification
+
+After Task 11, on an X4 Pro with an SD card and a reachable BookOrbit server:
+
+1. Settings → BookOrbit Sync → **Browse library**. Expect the dashboard: Continue reading, shelves, then Libraries / Collections / Series / All books.
+2. Open **All books**, then page forward. Check the serial log: each fetch must show a URL whose query keys are in alphabetical order and percent-encoded, e.g. `...?page=2&size=20&sort=recently_added`.
+3. Search for a title containing a space and an ampersand. The logged URL must carry `%20` and `%26`, and the results must be correct — proof the encoding is the server's, not the device's guess.
+4. Against a server **without** `catalogDashboardSections`: the dashboard shows fewer rows and no error. Confirm in the log that the 404 downgraded the capability and that no further request is made to `/dashboard/sections/...` for the rest of the session.
+5. Restart the device and repeat step 4 against a server returning **500** on that route. Expect the capability logged as *unknown* and the request retried on the next dashboard build — a 5xx must never cache a negative.
+6. Download a book. Watch the progress meter, then confirm on the card that `<name>.epub` exists and `<name>.epub.part` does not.
+7. Check the serial log for the partial MD5 printed after the download, and confirm the same 32-character hash appears in the next `match-check` request. **This is the loop closing: the downloaded book is syncable without any separate identification step.**
+8. Open the downloaded book, read a few pages, and trigger a sync. Progress and page-stats must upload under that same hash.
+9. **Interrupted download:** start a download of a large book and pull the WiFi (or press Back mid-transfer). Confirm a `.part` file is left and the final name is absent, that the book does **not** appear in the library browser, and that restarting the same download succeeds and overwrites the stale `.part` rather than appending to it.
+10. Power-pull the device mid-download. After reboot, confirm the same: a `.part` on the card, no complete book, and a clean re-download.
+11. Point a thumbnail URL at a route that returns HTML (a captive-portal style redirect works). Expect no file written under `/.crosspoint/bookorbit/thumbs/` and one `Thumbnail refused` line in the log.
+12. Configure a server that redirects downloads to a different host. Expect the transfer to fail rather than follow — the auth headers must not cross origins.
+13. Watch `ESP.getFreeHeap()` and `ESP.getMaxAllocHeap()` across a full catalog page fetch and a 30 MB download. Neither should track the body size: the fetch should cost roughly the parser plus one page of records, and the download should be flat.
+14. Repeat steps 1, 2 and 6 on an X3/X4 (`-e default`, ESP32-C3, no PSRAM) to confirm the streaming paths hold inside ~380 KB of internal RAM.
+
+## Self-Review Notes
+
+- **Spec coverage:** P5's spec section lists catalog browsing with sorted, encoded page-number queries (Tasks 1, 4), the cursor-paginated bulk manifest with cursor-rejection restart (Task 5), streamed `.part` downloads with atomic rename, capped same-origin redirects and a byte cap (Tasks 6, 10), the partial MD5 that closes the sync loop (Task 7), and `StreamingJsonParser` throughout rather than buffered bodies (Tasks 2, 3, 5). The dashboard family, the thumbnail route and the two PUT mutations come from the spec's endpoint table rather than its prose (Tasks 3, 4, 8, 9).
+- **Reuse over reinvention:** the browse screen is `OpdsBookBrowserActivity`'s structure with a different data source, not a new UI pattern; `KOReaderDocumentId::calculate()` is called, never re-implemented; `SecureHttpClient`'s existing `DataCallback` GET, `setFollowRedirects` and `setProgressCallback` do the transport work, with no new download stack. `OpdsServerStore` is the model for `BookOrbitCredentialStore`, which P0 already built — P5 adds no second credential store.
+- **Deliberately not reused:** `HttpDownloader::downloadToFile` writes straight to the destination name, so an interrupted transfer leaves a truncated file under the real book name. P5 needs the `.part`-then-rename contract, which is why `PartFileWriter` exists rather than another `DownloadOptions` flag. `OpdsParser` is XML and has no bearing on a JSON catalog.
+- **Type consistency:** `Error`/`Status` (P0 Task 2) flow unchanged through every task. `CapabilityCache` (P0 Task 3) is read in Task 4 and never written except by the confirmed-404 downgrade. `CatalogQuery` (Task 1) is the only place a query string is assembled — Tasks 4 and 5 both go through it, so the sorted-and-encoded rule cannot drift. `DownloadedBook.hash`, `MatchCandidate.hash` and `BookSyncState`'s key are the same 32-character string by construction, enforced by `isPartialMd5()`.
+- **Two interfaces rather than one:** `IFileSink` (Task 6) is not `IBlobStore` (P0 Task 4). `IBlobStore` writes a whole blob at once, which is exactly what a streamed download must not do. Merging them would force a download through a buffer and defeat the phase's central memory property.
+- **Bounded, not unbounded:** `kMaxPageItems`, `kMaxTransferBytes`, `kMaxThumbnailBytes`, `kMaxManifestRestarts` and `kMaxRedirectHops` each bound a resource a hostile or broken server could otherwise grow without limit. Every one is tested at its boundary.
+- **Deferred:** bulk/multi-select download orchestration over `ManifestEnumerator`. Task 5 delivers the enumerator and its restart contract with tests; the selection UI that drives a many-book run is a separate piece of work with its own checkpointing, and shipping it here would mean writing a queue with one caller. Cover thumbnail *rendering* in the list is likewise left to the UI task's judgement — Task 8 delivers the transfer and the guard, which is the part with a correctness rule attached.
