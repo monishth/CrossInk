@@ -16,9 +16,13 @@
 #include "network/BookOrbitCredentialStore.h"
 #include "network/BookOrbitFileSink.h"
 
-#ifndef SIMULATOR
+#ifdef SIMULATOR
+#include "network/SimulatorHttpTransport.h"
+using BookOrbitTransport = SimulatorHttpTransport;
+#else
 #include "network/BookOrbitHttpTransport.h"
 #include "network/BookOrbitStreamDownloader.h"
+using BookOrbitTransport = BookOrbitHttpTransport;
 #endif
 
 namespace fui = freeink::ui;
@@ -80,10 +84,7 @@ void BookOrbitCatalogActivity::onExit() {
 }
 
 void BookOrbitCatalogActivity::loadPage() {
-#ifdef SIMULATOR
-  statusMessage = tr(STR_BOOKORBIT_CATALOG_UNAVAILABLE);
-#else
-  BookOrbitHttpTransport transport(BOOKORBIT_STORE.getRootCaPem());
+  BookOrbitTransport transport(BOOKORBIT_STORE.getRootCaPem());
   bookorbit::DeviceIdentity identity;
   identity.deviceId = BOOKORBIT_STORE.getDeviceId();
   identity.deviceModel = CROSSINK_FIRMWARE_DEVICE_TYPE;
@@ -110,7 +111,6 @@ void BookOrbitCatalogActivity::loadPage() {
   statusMessage = page.items.empty() ? tr(STR_BOOKORBIT_EMPTY_SECTION) : "";
   selectedIndex = 0;
   topIndex = 0;
-#endif
 }
 
 void BookOrbitCatalogActivity::downloadSelected() {

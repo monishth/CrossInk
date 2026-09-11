@@ -15,8 +15,12 @@
 #include "network/BookOrbitCredentialStore.h"
 #include "util/InputReleaseGuard.h"
 
-#ifndef SIMULATOR
+#ifdef SIMULATOR
+#include "network/SimulatorHttpTransport.h"
+using BookOrbitTransport = SimulatorHttpTransport;
+#else
 #include "network/BookOrbitHttpTransport.h"
+using BookOrbitTransport = BookOrbitHttpTransport;
 #endif
 
 namespace fui = freeink::ui;
@@ -44,6 +48,14 @@ const StrId menuNames[MENU_ITEMS] = {
 };
 
 constexpr fui::ActionId ACTION_ROW = 1;
+
+// The transport refuses https without a root certificate, but plain http needs
+// none — so the UI must gate on the same rule rather than a stricter one, or a
+// local http server can never be reached from these rows.
+bool needsCertificateAndHasNone() {
+  const std::string& url = BOOKORBIT_STORE.getServerUrl();
+  return url.rfind("https://", 0) == 0 && BOOKORBIT_STORE.getRootCaPem().empty();
+}
 
 constexpr char kAuthPath[] = "/koreader/users/auth";
 constexpr char kVersionPath[] = "/koreader/plugin/version";
@@ -194,7 +206,7 @@ void BookOrbitSettingsActivity::handleSelection() {
     case ROW_SYNC_NOW:
       // Wi-Fi is only brought up on the network boot path, so syncing means a
       // silent restart into it — the same route KOReader sync takes.
-      if (!BOOKORBIT_STORE.hasCredentials() || BOOKORBIT_STORE.getRootCaPem().empty()) {
+      if (!BOOKORBIT_STORE.hasCredentials() || needsCertificateAndHasNone()) {
         statusMessage = tr(STR_BOOKORBIT_NO_CERT);
         requestUpdate();
         break;
@@ -207,7 +219,7 @@ void BookOrbitSettingsActivity::handleSelection() {
       silentRestartToNetwork(NetworkBootTarget::BOOKORBIT_SYNC);
       break;
     case ROW_BROWSE:
-      if (!BOOKORBIT_STORE.hasCredentials() || BOOKORBIT_STORE.getRootCaPem().empty()) {
+      if (!BOOKORBIT_STORE.hasCredentials() || needsCertificateAndHasNone()) {
         statusMessage = tr(STR_BOOKORBIT_NO_CERT);
         requestUpdate();
         break;
@@ -225,17 +237,12 @@ void BookOrbitSettingsActivity::runConnectionTest() {
   // Refusing early keeps the failure legible: without a PEM the transport
   // would decline the request anyway, and "cannot reach server" would be a
   // misleading way to say "you have not installed a certificate".
-  if (BOOKORBIT_STORE.getRootCaPem().empty()) {
+  if (needsCertificateAndHasNone()) {
     statusMessage = tr(STR_BOOKORBIT_NO_CERT);
     return;
   }
 
-#ifdef SIMULATOR
-  // The simulator's SecureHttpClient stub cannot perform this request; the
-  // network path is exercised by the native suite and on hardware.
-  statusMessage = tr(STR_BOOKORBIT_UNREACHABLE);
-#else
-  BookOrbitHttpTransport transport(BOOKORBIT_STORE.getRootCaPem());
+  BookOrbitTransport transport(BOOKORBIT_STORE.getRootCaPem());
 
   bookorbit::DeviceIdentity identity;
   identity.deviceId = BOOKORBIT_STORE.getDeviceId();
@@ -269,7 +276,6 @@ void BookOrbitSettingsActivity::runConnectionTest() {
   std::string versionBody;
   client.get(kVersionPath, versionBody);
   statusMessage = tr(STR_BOOKORBIT_CONNECTED);
-#endif
 }
 
 void BookOrbitSettingsActivity::listScreen(UiApp::ScreenType& screen, void* user) {

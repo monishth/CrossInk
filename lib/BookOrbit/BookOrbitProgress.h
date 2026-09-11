@@ -4,6 +4,8 @@
 #include <string>
 #include <string_view>
 
+#include "NativePosition.h"
+
 namespace bookorbit {
 
 // One reading position, in the shape BookOrbit's KOSync-compatible progress
@@ -15,6 +17,9 @@ struct ProgressRecord {
   std::string device;       // human-readable device name
   std::string deviceId;     // stable device identifier
   uint32_t timestamp = 0;   // unix epoch
+  // Approach B: an optional native position blob. Strictly additive — KOReader
+  // clients ignore it and read the xpointer, so it never replaces `progress`.
+  NativePosition position;
 };
 
 // GET /koreader/syncs/progress/{digest}. Returns "" for an empty digest.

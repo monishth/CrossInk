@@ -33,8 +33,12 @@
 #include "network/BookOrbitDocumentHasher.h"
 #include "network/BookOrbitProgressPhase.h"
 
-#ifndef SIMULATOR
+#ifdef SIMULATOR
+#include "network/SimulatorHttpTransport.h"
+using BookOrbitTransport = SimulatorHttpTransport;
+#else
 #include "network/BookOrbitHttpTransport.h"
+using BookOrbitTransport = BookOrbitHttpTransport;
 #endif
 
 namespace {
@@ -134,17 +138,11 @@ void BookOrbitSyncActivity::stepOnePhase() {
     return;
   }
 
-#ifdef SIMULATOR
-  // No usable HTTP stack in the simulator; end cleanly rather than pretending.
-  statusMessage = tr(STR_BOOKORBIT_UNREACHABLE);
-  finished = true;
-  requestUpdate();
-#else
   BookOrbitBlobStore blobs;
   bookorbit::SyncStateStore syncState(blobs, kStatePath);
   syncState.load();
 
-  BookOrbitHttpTransport transport(BOOKORBIT_STORE.getRootCaPem());
+  BookOrbitTransport transport(BOOKORBIT_STORE.getRootCaPem());
   bookorbit::DeviceIdentity identity;
   identity.deviceId = BOOKORBIT_STORE.getDeviceId();
   identity.deviceModel = CROSSINK_FIRMWARE_DEVICE_TYPE;
@@ -366,7 +364,6 @@ void BookOrbitSyncActivity::stepOnePhase() {
     finished = true;
   }
   requestUpdate();
-#endif
 }
 
 void BookOrbitSyncActivity::loop() {

@@ -2,6 +2,7 @@ add_executable(BookOrbitBulkProgressTest
   BookOrbitBulkProgressTest.cpp
   ${REPO_ROOT}/lib/BookOrbit/BookOrbitBulkProgress.cpp
   ${REPO_ROOT}/lib/BookOrbit/BookOrbitProgress.cpp
+  ${REPO_ROOT}/lib/BookOrbit/NativePosition.cpp
   ${REPO_ROOT}/lib/BookOrbit/XPointer.cpp
   ${REPO_ROOT}/lib/JsonParser/StreamingJsonParser.cpp
   ${REPO_ROOT}/lib/BookOrbit/JsonStructure.cpp

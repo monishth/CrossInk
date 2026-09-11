@@ -129,6 +129,9 @@ std::string encodePutProgress(const ProgressRecord& record) {
   appendJsonString(body, record.deviceId);
   body += ",\"timestamp\":";
   body += std::to_string(record.timestamp);
+  // Appends nothing when absent, so a device that has no native position sends
+  // exactly the bytes it sent before Approach B existed.
+  appendNativePosition(body, record.position);
   body += '}';
   return body;
 }
@@ -152,6 +155,10 @@ bool decodeProgressResponse(const std::string_view json, ProgressRecord& out) {
     out = ProgressRecord{};
     return false;
   }
+
+  // Approach B is optional: a response without a position object decodes fine
+  // with present == false, so this can never fail a pull.
+  decodeNativePosition(json, out.position);
   return true;
 }
 

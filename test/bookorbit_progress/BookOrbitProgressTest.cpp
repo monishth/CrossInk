@@ -3,6 +3,7 @@
 #include <string>
 
 #include "lib/BookOrbit/BookOrbitProgress.h"
+#include "lib/BookOrbit/NativePosition.h"
 
 using bookorbit::decodeProgressResponse;
 using bookorbit::encodePutProgress;
@@ -126,8 +127,6 @@ TEST(BookOrbitProgress, EncodeDecodeRoundTrip) {
   EXPECT_EQ(out.deviceId, sample().deviceId);
   EXPECT_EQ(out.timestamp, sample().timestamp);
 }
-
-#include "lib/BookOrbit/NativePosition.h"
 
 TEST(BookOrbitProgress, EncodesTheNativePositionWhenPresent) {
   ProgressRecord record = sample();
