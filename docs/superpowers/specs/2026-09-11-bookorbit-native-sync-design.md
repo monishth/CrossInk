@@ -164,8 +164,20 @@ the wrong default.
 
 2. **TLS must verify certificates.** `KOReaderSyncClient.cpp` calls
    `setInsecure()` before every request, so credentials are sent with no
-   certificate validation. The BookOrbit client validates against a CA bundle,
-   with an optional pinned SHA-256 fingerprint for self-signed deployments.
+   certificate validation.
+
+   The SDK already supports verification and nobody uses it:
+   `SecureHttpClient::setCACert()` reaches
+   `wolfSSL_CTX_load_verify_buffer(..., WOLFSSL_FILETYPE_PEM)` at
+   `freeink-sdk/libs/network/SecureNet/src/SecureClient.cpp:88`. The header
+   comment claiming the CA path is unwired (`SecureHttpClient.h:67`) is stale.
+
+   It accepts a **single PEM root, not a bundle**, and exposes no
+   fingerprint-pinning API. For a self-hosted server that is the right shape:
+   the user supplies their own server or CA certificate, and pinning that PEM
+   gives the same guarantee a fingerprint pin would. The BookOrbit client
+   therefore configures `setCACert()` with a user-supplied PEM and never calls
+   `setInsecure()`. No SDK change is required.
 
 Large responses are read through the existing `lib/JsonParser/StreamingJsonParser`
 (512-byte token buffer, 32 nesting levels, constant memory) rather than
