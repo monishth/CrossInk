@@ -2,11 +2,21 @@
 
 #include <Logging.h>
 
+#include <string>
+
 #include "Epub.h"
 #include "XPointer.h"
 #include "XPointerResolver.h"
 
 namespace {
+
+// "/body/DocFragment[N]/body" with nothing after it: the synthetic form that
+// names a chapter and no position inside it.
+bool isChapterLevelXPointer(const std::string& xpath) {
+  static constexpr char kSuffix[] = "]/body";
+  return xpath.size() > sizeof(kSuffix) && xpath.rfind("/body/DocFragment[", 0) == 0 &&
+         xpath.compare(xpath.size() - (sizeof(kSuffix) - 1), sizeof(kSuffix) - 1, kSuffix) == 0;
+}
 
 constexpr char kModule[] = "BOP";
 constexpr char kProgressPutPath[] = "/koreader/syncs/progress";
@@ -65,6 +75,19 @@ bool BookOrbitProgressPhase::push(const std::string& md5, const CrossPointPositi
   record.device = deviceName;
   record.deviceId = deviceId;
   record.timestamp = nowUnix;
+
+  // A chapter-level xpointer ("/body/DocFragment[N]/body") is what every
+  // resolver falls back to, and it lands another reader at the start of the
+  // chapter instead of where this one actually is. It is a legitimate answer
+  // only at the very top of a chapter; anywhere else it means the precise
+  // resolvers were skipped or failed, so say which, rather than shipping a
+  // silently coarse position.
+  if (isChapterLevelXPointer(record.progress)) {
+    LOG_INF(kModule, "coarse position for %s: spine=%d page=%d/%d offset=%s -> %s", md5.c_str(), position.spineIndex,
+            position.pageNumber, position.totalPages,
+            position.hasVisibleTextOffset ? std::to_string(position.visibleTextOffset).c_str() : "none",
+            record.progress.c_str());
+  }
 
   // Never degrade silently: refuse to push half a record rather than write a
   // percentage-only row a KOReader client would then treat as authoritative.
