@@ -7,6 +7,7 @@
 #include "BookOrbitCapabilities.h"
 #include "BookOrbitClient.h"
 #include "CatalogApi.h"
+#include "CatalogBookDetail.h"
 #include "CatalogDownload.h"
 #include "CatalogQuery.h"
 #include "MappedInputManager.h"
@@ -120,33 +121,66 @@ void BookOrbitCatalogActivity::downloadSelected() {
   if (selectedIndex >= page.items.size()) return;
   const auto& book = page.items[selectedIndex];
 
-  // A file id of zero means the catalog row has no downloadable file; saying so
-  // is better than issuing a request that can only 404.
-  if (book.fileId == 0) {
+  // The books *list* response carries no file id — only `formats`, a set of
+  // extension strings (koreader-catalog.service.ts:676-687). The id lives in
+  // the book detail, so fetch that first. Skipping this step is why selecting a
+  // book used to fail before any request was made.
+  BookOrbitTransport transport(BOOKORBIT_STORE.getRootCaPem());
+  bookorbit::DeviceIdentity identity;
+  identity.deviceId = BOOKORBIT_STORE.getDeviceId();
+  identity.deviceModel = CROSSINK_FIRMWARE_DEVICE_TYPE;
+  identity.pluginVersion = CROSSINK_VERSION;
+
+  bookorbit::BookOrbitClient client(transport, BOOKORBIT_STORE.getServerUrl(), BOOKORBIT_STORE.getUsername(),
+                                    BOOKORBIT_STORE.getMd5Password(), identity);
+
+  std::string detailBody;
+  const bookorbit::Error detailError = client.get(bookorbit::bookDetailPath(book.bookId), detailBody);
+  if (detailError.status != bookorbit::Status::Ok) {
+    LOG_ERR(kModule, "book detail %u failed (status %d http %d)", static_cast<unsigned>(book.bookId),
+            static_cast<int>(detailError.status), detailError.httpStatus);
+    statusMessage = tr(STR_BOOKORBIT_DOWNLOAD_FAILED);
+    return;
+  }
+
+  std::vector<bookorbit::CatalogFile> files;
+  if (!bookorbit::decodeBookDetailFiles(detailBody, files)) {
+    LOG_ERR(kModule, "book detail %u was not valid JSON", static_cast<unsigned>(book.bookId));
+    statusMessage = tr(STR_BOOKORBIT_DOWNLOAD_FAILED);
+    return;
+  }
+
+  const bookorbit::CatalogFile* file = bookorbit::pickDownloadableFile(files);
+  if (file == nullptr) {
+    LOG_ERR(kModule, "book %u has no downloadable file", static_cast<unsigned>(book.bookId));
     statusMessage = tr(STR_BOOKORBIT_DOWNLOAD_FAILED);
     return;
   }
 
   std::string target = std::string(kDownloadDir) + "/" + (book.title.empty() ? std::string("book") : book.title);
-  target += ".epub";
+  target += "." + (file->format.empty() ? std::string("epub") : file->format);
 
   BookOrbitFileSink sink;
-  bookorbit::PartFileWriter writer(sink, target, book.fileBytes);
+  bookorbit::PartFileWriter writer(sink, target, file->sizeBytes);
   if (!writer.begin()) {
+    // Every failure path logs: a silent "Download failed" is impossible to
+    // diagnose from the screen alone.
+    LOG_ERR(kModule, "cannot open %s for writing", target.c_str());
     statusMessage = tr(STR_BOOKORBIT_DOWNLOAD_FAILED);
     return;
   }
 
   BookOrbitDownloader downloader(BOOKORBIT_STORE.getRootCaPem().c_str(), BOOKORBIT_STORE.getUsername(),
                                  BOOKORBIT_STORE.getMd5Password());
-  const std::string url =
-      BOOKORBIT_STORE.getServerUrl() + "/koreader/plugin/catalog/files/" + std::to_string(book.fileId) + "/download";
+  const std::string url = BOOKORBIT_STORE.getServerUrl() + bookorbit::fileDownloadPath(file->fileId);
 
   statusMessage = tr(STR_BOOKORBIT_DOWNLOADING);
   requestUpdate();
 
-  const bookorbit::Error error = downloader.downloadTo(url, writer, book.fileBytes, nullptr, nullptr);
+  const bookorbit::Error error = downloader.downloadTo(url, writer, file->sizeBytes, nullptr, nullptr);
   if (error.status != bookorbit::Status::Ok || !writer.commit()) {
+    LOG_ERR(kModule, "download of file %u failed (status %d http %d)", static_cast<unsigned>(file->fileId),
+            static_cast<int>(error.status), error.httpStatus);
     // abandon() closes the .part and leaves it where it is. The important part
     // is that the final path is never published, so a failed download cannot
     // leave a truncated EPUB in the library; the stray .part is harmless and is
