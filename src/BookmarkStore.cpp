@@ -29,7 +29,8 @@ uint32_t stableStamp() {
 constexpr uint8_t LEGACY_VERSION = 2;
 constexpr uint8_t COUNT_U16_VERSION = 3;
 constexpr uint8_t PARAGRAPH_ANCHOR_VERSION = 4;
-constexpr uint8_t VERSION = 5;
+constexpr uint8_t SNIPPET_VERSION = 5;
+constexpr uint8_t VERSION = 6;  // adds visibleTextOffset
 // Stored count is uint16_t in v3+, but we keep an in-memory safety cap for ESP32-C3 RAM.
 constexpr uint16_t MAX_BOOKMARKS = 1024;
 constexpr size_t INITIAL_BOOKMARK_RESERVE = 8;
@@ -62,7 +63,8 @@ bool readBookmarkCount(FsFile& file, const uint8_t version, uint16_t& count) {
     return true;
   }
 
-  if (version == COUNT_U16_VERSION || version == PARAGRAPH_ANCHOR_VERSION || version == VERSION) {
+  if (version == COUNT_U16_VERSION || version == PARAGRAPH_ANCHOR_VERSION || version == SNIPPET_VERSION ||
+      version == VERSION) {
     serialization::readPod(file, count);
     return true;
   }
@@ -188,7 +190,7 @@ bool readBookmarkFileHeader(const std::string& fullPath, const char* name, Bookm
   uint8_t version;
   serialization::readPod(f, version);
   if (version != LEGACY_VERSION && version != COUNT_U16_VERSION && version != PARAGRAPH_ANCHOR_VERSION &&
-      version != VERSION) {
+      version != SNIPPET_VERSION && version != VERSION) {
     f.close();
     return false;
   }
@@ -340,7 +342,7 @@ void BookmarkStore::unload() {
 
 BookmarkStore::AddResult BookmarkStore::addBookmark(uint16_t spineIndex, float progress, int pageCount,
                                                     const char* chapterTitle, uint16_t paragraphIndex,
-                                                    const char* snippet) {
+                                                    const char* snippet, uint32_t visibleTextOffset) {
   if (pageCount > 0) {
     const float pageSlice = 1.0f / static_cast<float>(pageCount);
     const float pageStart = progress;
@@ -361,6 +363,7 @@ BookmarkStore::AddResult BookmarkStore::addBookmark(uint16_t spineIndex, float p
   bm.timestamp = stableStamp();
   snprintf(bm.chapterTitle, sizeof(bm.chapterTitle), "%s", chapterTitle ? chapterTitle : "");
   bm.paragraphIndex = paragraphIndex;
+  bm.visibleTextOffset = visibleTextOffset;
   snprintf(bm.snippet, sizeof(bm.snippet), "%s", snippet ? snippet : "");
 
   bookmarks.push_back(bm);
@@ -451,7 +454,7 @@ bool BookmarkStore::readFromFile(const std::string& path, std::vector<Bookmark>&
   uint8_t version;
   serialization::readPod(f, version);
   if (version != LEGACY_VERSION && version != COUNT_U16_VERSION && version != PARAGRAPH_ANCHOR_VERSION &&
-      version != VERSION) {
+      version != SNIPPET_VERSION && version != VERSION) {
     LOG_ERR("BKS", "Unknown bookmark file version %u: %s", version, path.c_str());
     f.close();
     return false;
@@ -519,7 +522,7 @@ bool BookmarkStore::readFromFile(const std::string& path, std::vector<Bookmark>&
     } else {
       bm.paragraphIndex = UINT16_MAX;
     }
-    if (version >= VERSION) {
+    if (version >= SNIPPET_VERSION) {
       const int snippetRead = f.read(bm.snippet, sizeof(bm.snippet));
       bm.snippet[sizeof(bm.snippet) - 1] = '\0';
       if (snippetRead != static_cast<int>(sizeof(bm.snippet))) {
@@ -529,6 +532,18 @@ bool BookmarkStore::readFromFile(const std::string& path, std::vector<Bookmark>&
       }
     } else {
       bm.snippet[0] = '\0';
+    }
+    // Older records keep BOOKMARK_VISIBLE_OFFSET_NONE; the anchor was never
+    // captured for them, so callers fall back to the legacy mapping.
+    if (version >= VERSION) {
+      if (f.available() < static_cast<int>(sizeof(bm.visibleTextOffset))) {
+        LOG_ERR("BKS", "Bookmark file truncated at visibleTextOffset, record %u: %s", i, path.c_str());
+        f.close();
+        return false;
+      }
+      serialization::readPod(f, bm.visibleTextOffset);
+    } else {
+      bm.visibleTextOffset = BOOKMARK_VISIBLE_OFFSET_NONE;
     }
     loadedBookmarks.push_back(bm);
   }
@@ -562,6 +577,7 @@ bool BookmarkStore::writeToFile() const {
     f.write(reinterpret_cast<const uint8_t*>(bm.chapterTitle), sizeof(bm.chapterTitle));
     serialization::writePod(f, bm.paragraphIndex);
     f.write(reinterpret_cast<const uint8_t*>(bm.snippet), sizeof(bm.snippet));
+    serialization::writePod(f, bm.visibleTextOffset);
   }
 
   f.close();
@@ -721,7 +737,7 @@ bool BookmarkStore::getAllBookmarkedBooks(std::vector<BookmarkedBookEntry>& out)
     uint8_t version;
     serialization::readPod(f, version);
     if (version != LEGACY_VERSION && version != COUNT_U16_VERSION && version != PARAGRAPH_ANCHOR_VERSION &&
-        version != VERSION) {
+        version != SNIPPET_VERSION && version != VERSION) {
       LOG_DBG("BKS", "Skipping bookmark file with unknown version: %s", name.c_str());
       f.close();
       continue;

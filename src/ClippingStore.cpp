@@ -31,7 +31,8 @@ uint32_t stableStamp() {
 constexpr uint8_t LEGACY_VERSION = 1;
 constexpr uint8_t TEXT_OFFSET_VERSION = 2;
 constexpr uint8_t LAYOUT_SIGNATURE_VERSION = 3;
-constexpr uint8_t VERSION = 4;
+constexpr uint8_t TABLE_SELECTION_VERSION = 4;
+constexpr uint8_t VERSION = 5;  // adds visibleTextOffset
 constexpr size_t INITIAL_CLIPPING_RESERVE = 4;
 constexpr char CLIPPINGS_DIR[] = "/.crosspoint/clippings";
 constexpr size_t TEXT_COPY_BUFFER_SIZE = 128;
@@ -65,7 +66,7 @@ bool readClippingFileHeader(const std::string& fullPath, const char* name, Clipp
   uint16_t count = 0;
   if (!serialization::tryReadPod(f, version) ||
       (version != LEGACY_VERSION && version != TEXT_OFFSET_VERSION && version != LAYOUT_SIGNATURE_VERSION &&
-       version != VERSION) ||
+       version != TABLE_SELECTION_VERSION && version != VERSION) ||
       !serialization::tryReadPod(f, count) || !serialization::tryReadString(f, header.title) ||
       !serialization::tryReadString(f, header.author) || !serialization::tryReadString(f, header.path)) {
     f.close();
@@ -143,7 +144,8 @@ ClippingStore::AddResult ClippingStore::addClipping(const uint16_t spineIndex, c
                                                     const uint16_t startWordIndex, const uint16_t endWordIndex,
                                                     const uint16_t wordCount, const char* chapterTitle,
                                                     const uint16_t paragraphIndex, const std::string& text,
-                                                    const uint16_t tableSelection, const uint32_t layoutSignature) {
+                                                    const uint16_t tableSelection, const uint32_t layoutSignature,
+                                                    const uint32_t visibleTextOffset) {
   if (clippings.size() >= CLIPPING_MAX_PER_BOOK) {
     LOG_ERR("CLIP", "Clipping limit (%u) reached", CLIPPING_MAX_PER_BOOK);
     return AddResult::LimitReached;
@@ -159,6 +161,7 @@ ClippingStore::AddResult ClippingStore::addClipping(const uint16_t spineIndex, c
   clipping.wordCount = wordCount;
   clipping.paragraphIndex = paragraphIndex;
   clipping.timestamp = stableStamp();
+  clipping.visibleTextOffset = visibleTextOffset;
   clipping.layoutSignature = layoutSignature;
   clipping.tableSelection = tableSelection;
   copyBounded(clipping.chapterTitle, sizeof(clipping.chapterTitle), chapterTitle);
@@ -289,7 +292,7 @@ bool ClippingStore::readFromFile(const std::string& path, std::vector<Clipping>&
   std::string storedPath;
   if (!serialization::tryReadPod(f, version) ||
       (version != LEGACY_VERSION && version != TEXT_OFFSET_VERSION && version != LAYOUT_SIGNATURE_VERSION &&
-       version != VERSION) ||
+       version != TABLE_SELECTION_VERSION && version != VERSION) ||
       !serialization::tryReadPod(f, count) || !serialization::tryReadString(f, title) ||
       !serialization::tryReadString(f, author) || !serialization::tryReadString(f, storedPath)) {
     f.close();
@@ -320,9 +323,16 @@ bool ClippingStore::readFromFile(const std::string& path, std::vector<Clipping>&
       LOG_ERR("CLIP", "Clipping file truncated at layout signature, record %u: %s", i, path.c_str());
       return false;
     }
-    if (version >= VERSION && !serialization::tryReadPod(f, clipping.tableSelection)) {
+    if (version >= TABLE_SELECTION_VERSION && !serialization::tryReadPod(f, clipping.tableSelection)) {
       f.close();
       LOG_ERR("CLIP", "Clipping file truncated at table selection, record %u: %s", i, path.c_str());
+      return false;
+    }
+    // Older records keep CLIPPING_VISIBLE_OFFSET_NONE: the anchor was never
+    // captured for them and cannot be recovered here, so callers fall back.
+    if (version >= VERSION && !serialization::tryReadPod(f, clipping.visibleTextOffset)) {
+      f.close();
+      LOG_ERR("CLIP", "Clipping file truncated at visible text offset, record %u: %s", i, path.c_str());
       return false;
     }
     if (f.read(reinterpret_cast<uint8_t*>(clipping.chapterTitle), sizeof(clipping.chapterTitle)) !=
@@ -425,6 +435,7 @@ bool ClippingStore::writeToFile(const std::string* replacementText, const size_t
         !serialization::tryWritePod(f, clipping.paragraphIndex) || !serialization::tryWritePod(f, clipping.timestamp) ||
         !serialization::tryWritePod(f, clipping.layoutSignature) ||
         !serialization::tryWritePod(f, clipping.tableSelection) ||
+        !serialization::tryWritePod(f, clipping.visibleTextOffset) ||
         f.write(reinterpret_cast<const uint8_t*>(clipping.chapterTitle), sizeof(clipping.chapterTitle)) !=
             sizeof(clipping.chapterTitle)) {
       LOG_ERR("CLIP", "Failed to write clipping record %u: %s", i, storeFilePath.c_str());

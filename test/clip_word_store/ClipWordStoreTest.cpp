@@ -327,7 +327,13 @@ TEST(ClippingLayout, CachesLegacyBoundaryRangesWithoutAHeapAllocation) {
   clipping.pageCount = 10;
   clipping.layoutSignature = 123;
 
-  EXPECT_EQ(sizeof(Clipping), 84U);
+  // Guards the per-book RAM cost: this record is held in a vector of up to
+  // CLIPPING_MAX_PER_BOOK (256) while a book is open, so every byte added here
+  // costs a quarter of a kilobyte on a device with ~380 KB. 84 -> 88 buys
+  // visibleTextOffset, without which a highlight has no layout-independent
+  // anchor and cannot be positioned for any other device. Do not grow this
+  // without the same kind of reason.
+  EXPECT_EQ(sizeof(Clipping), 88U);
   EXPECT_FALSE(clippingCachedRangeReadyOnPage(clipping, 2));
   EXPECT_TRUE(clippingCachedRangeReadyOnPage(clipping, 3));
   EXPECT_FALSE(clippingCachedRangeReadyOnPage(clipping, 4));

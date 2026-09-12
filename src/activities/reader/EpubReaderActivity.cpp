@@ -26,20 +26,20 @@
 
 #include "../settings/DictionarySelectActivity.h"
 #include "../settings/KOReaderSettingsActivity.h"
+#include "BookRatingMenuModel.h"
 #include "BookStatsActivity.h"
 #include "ClipSelectionActivity.h"
 #include "ClippingStore.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
-#include "BookRatingMenuModel.h"
-#include "bookorbit/BookOrbitEventRecorder.h"
-#include "bookorbit/BookOrbitLocalState.h"
 #include "DictionaryWordSelectActivity.h"
 #include "EpubGrayscale.h"
 #include "EpubReaderBookmarkListActivity.h"
 #include "EpubReaderChapterSelectionActivity.h"
 #include "EpubReaderClippingListActivity.h"
 #include "EpubReaderFootnotesActivity.h"
+#include "bookorbit/BookOrbitEventRecorder.h"
+#include "bookorbit/BookOrbitLocalState.h"
 #if CROSSINK_APP_CAP_TOUCH
 #include "EpubReaderTouchMenuActivity.h"
 #endif
@@ -3921,8 +3921,13 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
         if (auto page = section->loadPage(section->currentPage)) {
           buildBookmarkSnippet(*page, snippet, sizeof(snippet));
         }
-        const auto addResult =
-            BOOKMARKS.addBookmark(spine, progress, bookmarkPageCount, chapterTitle, paragraphIndex, snippet);
+        // The page's layout-independent anchor, so the bookmark can be placed
+        // on a device with a different page count. See Clipping::visibleTextOffset.
+        const uint32_t visibleTextOffset =
+            section->getVisibleTextOffsetForPage(static_cast<uint16_t>(section->currentPage))
+                .value_or(BOOKMARK_VISIBLE_OFFSET_NONE);
+        const auto addResult = BOOKMARKS.addBookmark(spine, progress, bookmarkPageCount, chapterTitle, paragraphIndex,
+                                                     snippet, visibleTextOffset);
         bookmarkFeedbackType = (addResult == BookmarkStore::AddResult::Added) ? BookmarkFeedbackType::Added
                                                                               : BookmarkFeedbackType::LimitReached;
       }
@@ -4491,10 +4496,16 @@ void EpubReaderActivity::startClipSelection(const DictionaryClippingRequest* dic
       const auto& clip = std::get<ClippingResult>(result.data);
       if (!clip.text.empty()) {
         const size_t clippingIndex = CLIPPINGS.clippingCount();
+        // The page's own anchor, which is what progress.bin stores and what
+        // BookOrbit positions are derived from. Page-granular rather than
+        // word-granular: the word's offset is not carried out of layout.
+        const uint32_t visibleTextOffset =
+            section ? section->getVisibleTextOffsetForPage(clip.sectionPage).value_or(CLIPPING_VISIBLE_OFFSET_NONE)
+                    : CLIPPING_VISIBLE_OFFSET_NONE;
         const auto addResult = CLIPPINGS.addClipping(
             static_cast<uint16_t>(currentSpineIndex), clip.sectionPage, clip.endSectionPage, clip.sectionPageCount,
             clip.startPageWordIndex, clip.endPageWordIndex, clip.wordCount, chapterTitle.c_str(), clip.paragraphIndex,
-            clip.text, clip.tableSelection, clippingLayoutSignature);
+            clip.text, clip.tableSelection, clippingLayoutSignature, visibleTextOffset);
         bool exported = false;
         if (addResult == ClippingStore::AddResult::Added) {
           exported = ClippingsManager::saveClipping(bookTitle, author, chapterTitle,

@@ -215,7 +215,7 @@ example:
 
 Binary layout:
 
-- `[0]` version (`1`, `2`, `3`, or current version `4`)
+- `[0]` version (`1`, `2`, `3`, `4`, or current version `5`)
 - `[1-2]` clipping count (`uint16_t` LE, maximum `256`)
 - book title (`String`)
 - book author (`String`)
@@ -229,14 +229,21 @@ Binary layout:
   - `endWordIndex` (`uint16_t` LE)
   - `wordCount` (`uint16_t` LE)
   - `paragraphIndex` (`uint16_t` LE, `UINT16_MAX` when unavailable)
-  - `timestamp` (`uint32_t` LE, seconds since firmware boot when saved)
-  - versions 3-4: reader layout signature (`uint32_t` LE; font, spacing,
+  - `timestamp` (`uint32_t` LE; wall-clock unix seconds from the RTC, falling
+    back to seconds since boot on a device without one)
+  - versions 3-5: reader layout signature (`uint32_t` LE; font, spacing,
     viewport, and other section-layout inputs)
-  - version 4: table selection (`uint16_t` LE; `UINT16_MAX` for non-table text)
+  - versions 4-5: table selection (`uint16_t` LE; `UINT16_MAX` for non-table text)
+  - version 5: visible-text offset (`uint32_t` LE; codepoint offset into the
+    spine item's visible text, `UINT32_MAX` when unavailable). Pages and
+    paragraph indices move with font size and with crengine's DOM version;
+    this counts source text and does not, so it is the anchor sync positions
+    are derived from. Records written before version 5 have no anchor and
+    cannot be positioned for another device.
   - `chapterTitle` (`char[48]`, null-terminated/truncated)
   - version 1: selected text (`String`; legacy files were written with a
     `512`-byte in-app limit)
-  - versions 2-4: selected-text length (`uint16_t` LE) followed by that many
+  - versions 2-5: selected-text length (`uint16_t` LE) followed by that many
     UTF-8 bytes (the current in-app limit is `4096` bytes, defined by
     `CLIPPING_TEXT_MAX`)
 

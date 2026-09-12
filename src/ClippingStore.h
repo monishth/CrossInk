@@ -1,5 +1,6 @@
 #pragma once
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -13,6 +14,8 @@ inline constexpr size_t CLIPPING_TEXT_MAX = 4U * 1024U;
 inline constexpr uint16_t CLIPPING_MAX_PER_BOOK = 256;
 inline constexpr uint16_t CLIPPING_MAX_PAGE_MATCHES = 16;
 inline constexpr uint32_t CLIPPING_WORD_LAYOUT_VERSION = 2;
+// No visible-text offset recorded (a clipping saved before v5).
+inline constexpr uint32_t CLIPPING_VISIBLE_OFFSET_NONE = UINT32_MAX;
 inline constexpr uint8_t CLIPPING_LAYOUT_START_RESOLVED = 1U << 0;
 inline constexpr uint8_t CLIPPING_LAYOUT_END_RESOLVED = 1U << 1;
 inline constexpr uint8_t CLIPPING_LAYOUT_BOUNDARIES_RESOLVED =
@@ -36,6 +39,11 @@ struct Clipping {
   uint16_t wordCount = 0;
   uint16_t paragraphIndex = UINT16_MAX;
   uint32_t timestamp = 0;
+  // Codepoint offset into the spine item's visible text. This is the only
+  // layout-independent anchor a clipping has: pages and paragraph indices move
+  // with font size and with crengine's DOM version, while this counts source
+  // text and does not. BookOrbit positions are derived from it.
+  uint32_t visibleTextOffset = CLIPPING_VISIBLE_OFFSET_NONE;
   uint32_t layoutSignature = 0;
   uint32_t textOffset = 0;
   uint16_t textLength = 0;
@@ -68,10 +76,13 @@ class ClippingStore {
                    const std::string& bookType);
   void unload();
 
+  // visibleTextOffset is the clipping's layout-independent anchor; pass
+  // CLIPPING_VISIBLE_OFFSET_NONE when the caller genuinely has none, and
+  // accept that the clipping cannot then be positioned for another device.
   AddResult addClipping(uint16_t spineIndex, uint16_t startPage, uint16_t endPage, uint16_t pageCount,
                         uint16_t startWordIndex, uint16_t endWordIndex, uint16_t wordCount, const char* chapterTitle,
                         uint16_t paragraphIndex, const std::string& text, uint16_t tableSelection,
-                        uint32_t layoutSignature);
+                        uint32_t layoutSignature, uint32_t visibleTextOffset = CLIPPING_VISIBLE_OFFSET_NONE);
   bool removeClippingAt(size_t index);
   bool saveToFile();
   void clearAll();

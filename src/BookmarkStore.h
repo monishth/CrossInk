@@ -8,6 +8,9 @@
 inline constexpr size_t BOOKMARK_CHAPTER_TITLE_MAX = 48;
 inline constexpr size_t BOOKMARK_SNIPPET_MAX = 64;
 
+// No visible-text offset recorded (a bookmark saved before v6).
+inline constexpr uint32_t BOOKMARK_VISIBLE_OFFSET_NONE = UINT32_MAX;
+
 struct Bookmark {
   uint16_t spineIndex;
   float progress;
@@ -16,6 +19,9 @@ struct Bookmark {
   // Optional 1-based paragraph anchor from the section cache. UINT16_MAX means unavailable.
   uint16_t paragraphIndex = UINT16_MAX;
   char snippet[BOOKMARK_SNIPPET_MAX] = {};
+  // Codepoint offset into the spine item's visible text: the layout-independent
+  // anchor BookOrbit positions are derived from. See Clipping::visibleTextOffset.
+  uint32_t visibleTextOffset = BOOKMARK_VISIBLE_OFFSET_NONE;
 };
 
 struct BookmarkedBookEntry {
@@ -42,7 +48,8 @@ class BookmarkStore {
   void unload();
 
   AddResult addBookmark(uint16_t spineIndex, float progress, int pageCount, const char* chapterTitle,
-                        uint16_t paragraphIndex = UINT16_MAX, const char* snippet = nullptr);
+                        uint16_t paragraphIndex = UINT16_MAX, const char* snippet = nullptr,
+                        uint32_t visibleTextOffset = BOOKMARK_VISIBLE_OFFSET_NONE);
   void removeBookmarkForPage(uint16_t spineIndex, float pageProgress, int pageCount);
   bool removeBookmarkAt(size_t index);
   bool hasBookmarkForPage(uint16_t spineIndex, float pageProgress, int pageCount);
