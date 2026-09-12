@@ -46,6 +46,8 @@ class BookOrbitCatalogActivity final : public Activity {
   uint32_t pageNumber = 1;
   bool loading = false;
   bool loadRequested = false;
+  // A network boot target boots minimally; Wi-Fi is this activity's job.
+  bool networkReady = false;
   std::string statusMessage;
 
   static void listScreen(UiApp::ScreenType& screen, void* user);

@@ -16,6 +16,7 @@ enum class NetworkBootTarget : uint32_t {
   MANAGE_FONTS = 7,
   BOOKORBIT_SYNC = 8,
   BOOKORBIT_CATALOG = 9,
+  BOOKORBIT_TEST = 10,
 };
 
 constexpr bool isNetworkBootTargetValue(const uint32_t value) {
@@ -28,6 +29,7 @@ constexpr bool isNetworkBootTargetValue(const uint32_t value) {
     case NetworkBootTarget::MANAGE_FONTS:
     case NetworkBootTarget::BOOKORBIT_SYNC:
     case NetworkBootTarget::BOOKORBIT_CATALOG:
+    case NetworkBootTarget::BOOKORBIT_TEST:
       return true;
   }
   return false;

@@ -3,6 +3,7 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <WiFi.h>
 
 #include <algorithm>
 #include <ctime>
@@ -24,7 +25,11 @@
 #include "MappedInputManager.h"
 #include "PageStatsCodec.h"
 #include "ReadingEventLog.h"
+#include "SdCardFontSystem.h"
+#include "SilentRestart.h"
+#include "activities/network/WifiSelectionActivity.h"
 #include "activities/reader/EpubReaderUtils.h"
+#include "bookorbit/BookOrbitTime.h"
 #include "bookorbit/CrossInkAnnotationSource.h"
 #include "components/TouchHeaderBackButton.h"
 #include "components/UITheme.h"
@@ -32,6 +37,7 @@
 #include "network/BookOrbitCredentialStore.h"
 #include "network/BookOrbitDocumentHasher.h"
 #include "network/BookOrbitProgressPhase.h"
+#include "network/WifiUtils.h"
 
 #ifdef SIMULATOR
 #include "network/SimulatorHttpTransport.h"
@@ -47,22 +53,94 @@ constexpr char kStatePath[] = "/.crosspoint/bookorbit_state.bin";
 constexpr char kBookStatePath[] = "/.crosspoint/bookorbit_book_states.bin";
 }  // namespace
 
-BookOrbitSyncActivity::BookOrbitSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string path)
-    : Activity(NAME, renderer, mappedInput), epubPath(std::move(path)) {}
+BookOrbitSyncActivity::BookOrbitSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string path,
+                                             const Mode activityMode)
+    : Activity(NAME, renderer, mappedInput), mode(activityMode), epubPath(std::move(path)) {}
+
+void BookOrbitSyncActivity::runConnectionTest() {
+  finished = true;
+
+  BookOrbitTransport transport(BOOKORBIT_STORE.getRootCaPem());
+  bookorbit::DeviceIdentity identity;
+  identity.deviceId = BOOKORBIT_STORE.getDeviceId();
+  identity.deviceModel = CROSSINK_FIRMWARE_DEVICE_TYPE;
+  identity.pluginVersion = CROSSINK_VERSION;
+
+  bookorbit::BookOrbitClient client(transport, BOOKORBIT_STORE.getServerUrl(), BOOKORBIT_STORE.getUsername(),
+                                    BOOKORBIT_STORE.getMd5Password(), identity);
+
+  std::string body;
+  const bookorbit::Error error = client.get("/koreader/users/auth", body);
+  switch (error.status) {
+    case bookorbit::Status::Ok:
+      break;
+    case bookorbit::Status::Unauthorized:
+      statusMessage = tr(STR_BOOKORBIT_AUTH_FAILED);
+      return;
+    case bookorbit::Status::Transport:
+      // Wi-Fi is genuinely up on this path, so a failure here is a real network
+      // or TLS problem rather than the absent-interface case. SecureClient
+      // prints the wolfSSL error code, which names which.
+      LOG_ERR(kModule, "connection test failed at transport level");
+      statusMessage = tr(STR_BOOKORBIT_UNREACHABLE);
+      return;
+    default:
+      statusMessage = tr(STR_BOOKORBIT_UNREACHABLE);
+      return;
+  }
+
+  // Seed the capability cache so the first real sync need not negotiate.
+  std::string versionBody;
+  client.get("/koreader/plugin/version", versionBody);
+  statusMessage = tr(STR_BOOKORBIT_CONNECTED);
+}
 
 void BookOrbitSyncActivity::onEnter() {
   Activity::onEnter();
   finished = false;
   started = false;
-  statusMessage = tr(STR_BOOKORBIT_SYNCING);
+  networkReady = false;
+  statusMessage = mode == Mode::ConnectionTest ? tr(STR_BOOKORBIT_TESTING) : tr(STR_BOOKORBIT_SYNCING);
   BOOKORBIT_STORE.ensureLoaded();
-  requestUpdate();
+
+  // Free the loaded reader font before the TLS stack needs heap.
+  sdFontSystem.releaseLoadedFont(renderer);
+
+  // A network boot target does not connect Wi-Fi — it boots minimally so that
+  // there is heap for the activity to bring Wi-Fi up itself. Issuing requests
+  // without doing that panics inside the network stack on a null semaphore.
+  if (hasActiveStationWifiConnection()) {
+    networkReady = true;
+    requestUpdate();
+    return;
+  }
+
+  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+                         [this](const ActivityResult& result) {
+                           if (result.isCancelled) {
+                             statusMessage = tr(STR_WIFI_CONN_FAILED);
+                             finished = true;
+                           } else {
+                             WiFi.setSleep(false);
+                             networkReady = true;
+                           }
+                           requestUpdate();
+                         });
 }
 
 void BookOrbitSyncActivity::onExit() {
   statusMessage.clear();
   bookHash.clear();
+  epub.reset();
   Activity::onExit();
+
+  if (WiFi.getMode() != WIFI_MODE_NULL) {
+    WiFi.disconnect(false);
+    delay(30);
+  }
+  // Entered from a minimal network boot, so the full app state has to be
+  // restored even if nothing succeeded.
+  silentRestartAfterNetwork();
 }
 
 const char* BookOrbitSyncActivity::phaseLabel(const bookorbit::SyncPhase phase) const {
@@ -117,7 +195,17 @@ void BookOrbitSyncActivity::stepOnePhase() {
     LOG_INF(kModule, "syncing %s (%s)", epubPath.c_str(), bookHash.c_str());
   }
 
-  const uint32_t nowUnix = static_cast<uint32_t>(time(nullptr));
+  // std::time() counts from boot on this device until something syncs it, so
+  // it stamps uploads with 1970 dates that look plausible and permanently skew
+  // every derived statistic. Refuse to sync rather than send fabricated times.
+  uint32_t nowUnix = 0;
+  if (!bookorbit_time::deviceUnixTime(nowUnix)) {
+    LOG_ERR(kModule, "no trustworthy clock; refusing to sync");
+    statusMessage = tr(STR_BOOKORBIT_CLOCK_UNSET);
+    finished = true;
+    requestUpdate();
+    return;
+  }
   const bookorbit::SyncPhase phase = outbox.currentPhase();
   if (phase == bookorbit::SyncPhase::Done) {
     if (outbox.hadErrors()) {
@@ -303,6 +391,10 @@ void BookOrbitSyncActivity::stepOnePhase() {
         break;
       }
 
+      // Both stores are unloaded on this path; without this the exchange sends
+      // an empty key set and cannot store anything the server returns.
+      prepareStoresForBook(epub);
+
       std::vector<bookorbit::Annotation> raw;
       collectBookOrbitAnnotations(epub, raw);
       const auto local = bookorbit::normalizeAnnotations(raw);
@@ -324,6 +416,8 @@ void BookOrbitSyncActivity::stepOnePhase() {
         phaseRan = false;
         break;
       }
+
+      prepareStoresForBook(epub);
 
       std::vector<bookorbit::Bookmark> raw;
       collectBookOrbitBookmarks(epub, raw);
@@ -375,8 +469,14 @@ void BookOrbitSyncActivity::loop() {
     finishAfterBackPress();
     return;
   }
+  if (finished || !networkReady) return;
+  if (mode == Mode::ConnectionTest) {
+    runConnectionTest();
+    requestUpdate();
+    return;
+  }
   // One phase per tick keeps the render task responsive during a sync.
-  if (!finished) stepOnePhase();
+  stepOnePhase();
 }
 
 void BookOrbitSyncActivity::render(RenderLock&&) {

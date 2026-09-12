@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -10,6 +11,7 @@ namespace bookorbit {
 // entry ended up with, so the server can address it in a later delete.
 struct AppliedAck {
   std::string serverId;
+  uint32_t version = 0;
   std::string key;
   std::string datetime;
   std::string pos0;

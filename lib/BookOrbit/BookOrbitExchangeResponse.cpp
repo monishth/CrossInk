@@ -79,7 +79,10 @@ void onNumber(void* raw, const char* value, const size_t len) {
   if (ctx->section != Section::Add && ctx->section != Section::Delete) return;
   const std::string text(value, len);
   if (ctx->key == "serverId") {
-    ctx->entry.serverId = text;  // kept as text; the ack echoes it verbatim
+    ctx->entry.serverId = text;  // kept as text; re-emitted unquoted in the ack
+  } else if (ctx->key == "version") {
+    // Required in the ack, so it has to survive the round trip.
+    ctx->entry.version = static_cast<uint32_t>(strtoul(text.c_str(), nullptr, 10));
   } else if (ctx->key == "pageno") {
     ctx->entry.pageno = static_cast<int32_t>(strtol(text.c_str(), nullptr, 10));
   }

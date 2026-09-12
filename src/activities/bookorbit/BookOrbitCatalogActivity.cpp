@@ -3,6 +3,9 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <WiFi.h>
+
+#include <cstring>
 
 #include "BookOrbitCapabilities.h"
 #include "BookOrbitClient.h"
@@ -11,11 +14,15 @@
 #include "CatalogDownload.h"
 #include "CatalogQuery.h"
 #include "MappedInputManager.h"
+#include "SdCardFontSystem.h"
+#include "SilentRestart.h"
+#include "activities/network/WifiSelectionActivity.h"
 #include "components/TouchHeaderBackButton.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "network/BookOrbitCredentialStore.h"
 #include "network/BookOrbitFileSink.h"
+#include "network/WifiUtils.h"
 
 #ifdef SIMULATOR
 #include "network/SimulatorHttpTransport.h"
@@ -38,6 +45,28 @@ constexpr uint32_t kPageSize = 20;
 
 // Books land beside everything else the user already browses.
 constexpr char kDownloadDir[] = "/Books";
+
+// Catalog titles are arbitrary text, but the card is FAT: "/" would silently
+// redirect the write into a subdirectory, and \ : * ? " < > | are rejected
+// outright. Trailing dots and spaces are also invalid. Map anything unusable to
+// "-" so a book is never undownloadable because of its title.
+std::string sanitizeFileName(const std::string& title) {
+  static constexpr char kIllegal[] = "\\/:*?\"<>|";
+  std::string out;
+  out.reserve(title.size());
+  for (const char c : title) {
+    const auto unsignedChar = static_cast<unsigned char>(c);
+    if (unsignedChar < 0x20 || std::strchr(kIllegal, c) != nullptr) {
+      out.push_back('-');
+    } else {
+      out.push_back(c);
+    }
+  }
+  while (!out.empty() && (out.back() == '.' || out.back() == ' ')) out.pop_back();
+  // Keep well inside FAT's 255-character limit once the extension is appended.
+  if (out.size() > 120) out.resize(120);
+  return out.empty() ? std::string("book") : out;
+}
 }  // namespace
 
 BookOrbitCatalogActivity::BookOrbitCatalogActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -67,24 +96,51 @@ void BookOrbitCatalogActivity::onEnter() {
   topIndex = 0;
   pageNumber = 1;
   loading = false;
+  loadRequested = false;
+  networkReady = false;
   statusMessage.clear();
   applySharedUiTheme(app, uiTarget);
   app.on(ACTION_ROW, &BookOrbitCatalogActivity::onRowEvent, this);
   app.setScreen(&BookOrbitCatalogActivity::listScreen, this);
   BOOKORBIT_STORE.ensureLoaded();
+  sdFontSystem.releaseLoadedFont(renderer);
 
-  // Fetch on the first loop() tick rather than here: onEnter() runs before the
-  // first render, and a blocking request would leave the screen blank until the
-  // network answered.
-  loadRequested = true;
-  statusMessage = tr(STR_LOADING);
-  requestUpdate();
+  // A network boot target boots minimally so the activity has heap to bring
+  // Wi-Fi up; it does not connect for us. Requests issued before that panic
+  // inside the network stack on a null semaphore.
+  if (hasActiveStationWifiConnection()) {
+    networkReady = true;
+    loadRequested = true;
+    statusMessage = tr(STR_LOADING);
+    requestUpdate();
+    return;
+  }
+
+  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+                         [this](const ActivityResult& result) {
+                           if (result.isCancelled) {
+                             statusMessage = tr(STR_WIFI_CONN_FAILED);
+                           } else {
+                             WiFi.setSleep(false);
+                             networkReady = true;
+                             loadRequested = true;
+                             statusMessage = tr(STR_LOADING);
+                           }
+                           requestUpdate();
+                         });
 }
 
 void BookOrbitCatalogActivity::onExit() {
   page.items.clear();
   statusMessage.clear();
   Activity::onExit();
+
+  if (WiFi.getMode() != WIFI_MODE_NULL) {
+    WiFi.disconnect(false);
+    delay(30);
+  }
+  // Entered from a minimal network boot; hand the full app back.
+  silentRestartAfterNetwork();
 }
 
 void BookOrbitCatalogActivity::loadPage() {
@@ -157,7 +213,7 @@ void BookOrbitCatalogActivity::downloadSelected() {
     return;
   }
 
-  std::string target = std::string(kDownloadDir) + "/" + (book.title.empty() ? std::string("book") : book.title);
+  std::string target = std::string(kDownloadDir) + "/" + sanitizeFileName(book.title);
   target += "." + (file->format.empty() ? std::string("epub") : file->format);
 
   BookOrbitFileSink sink;
@@ -213,7 +269,7 @@ void BookOrbitCatalogActivity::loop() {
   }
 
   // Deferred fetch: the screen has painted "Loading" by the time this runs.
-  if (loadRequested) {
+  if (loadRequested && networkReady) {
     loadRequested = false;
     loading = true;
     loadPage();

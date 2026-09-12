@@ -62,7 +62,7 @@ Error exchangeAnnotations(BookOrbitClient& client, BookSyncState& book, const st
                                                       firstRequest && keysComplete, chunk);
 
     std::string responseBody;
-    const Error error = client.postJson(kAnnotationExchangePath, body, responseBody);
+    const Error error = client.postJson(kAnnotationExchangePath, client.withDeviceFields(body, nowUnix), responseBody);
     if (error.status != Status::Ok) {
       LOG_ERR("BORB", "annotation exchange failed (%d)", error.httpStatus);
       outcome.hadErrors = true;
@@ -111,8 +111,9 @@ Error exchangeAnnotations(BookOrbitClient& client, BookSyncState& book, const st
     }
 
     std::string ackResponse;
-    const Error ackError =
-        client.postJson(kAnnotationAckPath, encodeExchangeAck(hash, appliedAcks, deletedAcks), ackResponse);
+    const Error ackError = client.postJson(
+        kAnnotationAckPath, client.withDeviceFields(encodeExchangeAck(hash, appliedAcks, deletedAcks), nowUnix),
+        ackResponse);
     if (ackError.status != Status::Ok) {
       // The changes are on disk but the server never heard so. Leaving the
       // book unstamped makes it re-exchange; the applier dedupes by identity,
@@ -127,7 +128,8 @@ Error exchangeAnnotations(BookOrbitClient& client, BookSyncState& book, const st
 
     std::string followUpBody;
     const Error followUp =
-        client.postJson(kAnnotationExchangePath, encodeAnnotationExchange(hash, {}, false, {}), followUpBody);
+        client.postJson(kAnnotationExchangePath,
+                        client.withDeviceFields(encodeAnnotationExchange(hash, {}, false, {}), nowUnix), followUpBody);
     if (followUp.status != Status::Ok) {
       LOG_ERR("BORB", "annotation exchange follow-up failed (%d)", followUp.httpStatus);
       outcome.hadErrors = true;

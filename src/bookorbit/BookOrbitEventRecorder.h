@@ -40,7 +40,7 @@ class BookOrbitEventRecorder {
    * @param dwellSeconds raw seconds on the page, before clamping
    * @return true when an event was buffered
    */
-  bool recordPageDwell(Epub& epub, int spineIndex, float spineProgress, uint32_t dwellSeconds);
+  bool recordPageDwell(const Epub& epub, int spineIndex, float spineProgress, uint32_t dwellSeconds);
 
   /** Writes anything still buffered. Called on destruction and at reader exit. */
   bool flush();

@@ -10,8 +10,11 @@ namespace bookorbit {
 // One server-side change. The same struct carries an annotation and a bookmark:
 // a bookmark's "pos" decodes into pos0, and its label into title.
 struct RemoteEntry {
-  std::string serverId;  // echoed verbatim in the ack; number or string on the wire
-  std::string key;       // md5(datetime|pos) identity, present on deletes
+  std::string serverId;  // numeric on the wire; echoed back as an integer
+  // The server stamps every entry with a version and requires it echoed in the
+  // ack (ExchangeAckAppliedDto.version is @IsInt @Min(1)); omitting it is a 400.
+  uint32_t version = 0;
+  std::string key;  // md5(datetime|pos) identity, present on deletes
   std::string datetime;
   std::string datetimeUpdated;
   std::string drawer;

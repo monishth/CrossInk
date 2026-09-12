@@ -1,6 +1,7 @@
 #include "BookOrbitSettingsActivity.h"
 
 #include <GfxRenderer.h>
+#include <HalClock.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -65,6 +66,19 @@ constexpr char kRootCaImportPath[] = "/.crosspoint/bookorbit_ca.pem";
 // A single root certificate is ~1-2 KB; anything larger is a bundle or the
 // wrong file, and SecureHttpClient::setCACert() takes one root, not a bundle.
 constexpr size_t kMaxRootCaBytes = 8 * 1024;
+
+bool isHttpsServer() { return BOOKORBIT_STORE.getServerUrl().rfind("https://", 0) == 0; }
+
+// The device only needs a roughly-right clock: certificate windows are months
+// wide, so anything in a plausible year range is good enough to rule out
+// "not yet valid" as the cause of a handshake failure.
+bool deviceClockLooksSane() {
+  if (!halClock.isAvailable()) return false;
+  uint16_t year = 0;
+  uint8_t month = 0, day = 0, hour = 0, minute = 0;
+  if (!halClock.getDateTime(year, month, day, hour, minute)) return false;
+  return year >= 2025 && year <= 2100;
+}
 
 constexpr char kAuthPath[] = "/koreader/users/auth";
 constexpr char kVersionPath[] = "/koreader/plugin/version";
@@ -292,48 +306,22 @@ void BookOrbitSettingsActivity::runConnectionTest() {
     statusMessage = tr(STR_SET_CREDENTIALS_FIRST);
     return;
   }
-  // Refusing early keeps the failure legible: without a PEM the transport
-  // would decline the request anyway, and "cannot reach server" would be a
-  // misleading way to say "you have not installed a certificate".
   if (needsCertificateAndHasNone()) {
     statusMessage = tr(STR_BOOKORBIT_NO_CERT);
     return;
   }
-
-  BookOrbitTransport transport(BOOKORBIT_STORE.getRootCaPem());
-
-  bookorbit::DeviceIdentity identity;
-  identity.deviceId = BOOKORBIT_STORE.getDeviceId();
-  identity.deviceModel = CROSSINK_FIRMWARE_DEVICE_TYPE;
-  identity.pluginVersion = CROSSINK_VERSION;
-
-  bookorbit::BookOrbitClient client(transport, BOOKORBIT_STORE.getServerUrl(), BOOKORBIT_STORE.getUsername(),
-                                    BOOKORBIT_STORE.getMd5Password(), identity);
-
-  std::string body;
-  const bookorbit::Error error = client.get(kAuthPath, body);
-  switch (error.status) {
-    case bookorbit::Status::Ok:
-      break;
-    case bookorbit::Status::Unauthorized:
-      statusMessage = tr(STR_BOOKORBIT_AUTH_FAILED);
-      return;
-    case bookorbit::Status::Transport:
-      // A rejected certificate surfaces as a transport failure, because the
-      // handshake never completes. Both readings are worth offering, but the
-      // certificate is the likelier cause once a PEM is configured.
-      statusMessage = tr(STR_BOOKORBIT_CERT_INVALID);
-      return;
-    default:
-      statusMessage = tr(STR_BOOKORBIT_UNREACHABLE);
-      return;
+  if (isHttpsServer() && !deviceClockLooksSane()) {
+    // TLS checks the certificate's validity window against the device clock, so
+    // an unset clock makes a good certificate look "not yet valid".
+    statusMessage = tr(STR_BOOKORBIT_CLOCK_UNSET);
+    return;
   }
 
-  // Auth succeeded; seed the capability cache so the first real sync does not
-  // have to negotiate from scratch.
-  std::string versionBody;
-  client.get(kVersionPath, versionBody);
-  statusMessage = tr(STR_BOOKORBIT_CONNECTED);
+  // Wi-Fi only exists after a silent restart into the network boot path — this
+  // is a plain settings activity with no interface up, so issuing the request
+  // here produced EHOSTUNREACH for every URL regardless of whether the server
+  // was reachable. Restart into the network target like Sync and Browse do.
+  silentRestartToNetwork(NetworkBootTarget::BOOKORBIT_TEST);
 }
 
 void BookOrbitSettingsActivity::listScreen(UiApp::ScreenType& screen, void* user) {

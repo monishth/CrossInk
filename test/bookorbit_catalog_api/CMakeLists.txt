@@ -13,6 +13,7 @@ add_executable(CatalogApiTest
 )
 
 target_include_directories(CatalogApiTest PRIVATE
+  ${REPO_ROOT}/test/minibidi_arabic/stubs  # no-op Logging.h for host tests
   ${REPO_ROOT}/lib/BookOrbit
   ${REPO_ROOT}/lib/JsonParser
 )

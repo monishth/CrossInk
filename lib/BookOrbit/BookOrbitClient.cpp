@@ -1,5 +1,7 @@
 #include "BookOrbitClient.h"
 
+#include <Logging.h>
+
 #include <ctime>
 #include <utility>
 
@@ -57,6 +59,17 @@ Error BookOrbitClient::send(const std::string_view method, const std::string_vie
 
   const HttpResponse response = transport.send(request);
   outBody = response.body;
+
+  // A 4xx body carries the server's reason — for a validation failure it names
+  // the offending property. Discarding it turns every rejected request into a
+  // bare status code and a guessing game, so log a bounded prefix. Only on
+  // client errors: success bodies are large and uninteresting here.
+  if (response.status >= 400 && response.status < 500 && !response.body.empty()) {
+    constexpr size_t kMaxLoggedBody = 220;
+    const std::string detail = response.body.substr(0, kMaxLoggedBody);
+    LOG_ERR("BORB", "%s %s -> %d: %s", request.method.c_str(), request.url.c_str(), response.status, detail.c_str());
+  }
+
   return classify(response.status, response.transportFailed);
 }
 

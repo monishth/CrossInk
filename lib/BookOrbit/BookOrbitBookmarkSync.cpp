@@ -79,7 +79,7 @@ Error exchangeBookmarks(BookOrbitClient& client, CapabilityCache& capabilities, 
                                                     firstRequest && keysComplete, chunk);
 
     std::string responseBody;
-    const Error error = client.postJson(kBookmarkExchangePath, body, responseBody);
+    const Error error = client.postJson(kBookmarkExchangePath, client.withDeviceFields(body, nowUnix), responseBody);
     if (error.status != Status::Ok) {
       LOG_ERR("BORB", "bookmark exchange failed (%d)", error.httpStatus);
       outcome.hadErrors = true;
@@ -123,8 +123,9 @@ Error exchangeBookmarks(BookOrbitClient& client, CapabilityCache& capabilities, 
     }
 
     std::string ackResponse;
-    const Error ackError =
-        client.postJson(kBookmarkAckPath, encodeExchangeAck(hash, appliedAcks, deletedAcks), ackResponse);
+    const Error ackError = client.postJson(
+        kBookmarkAckPath, client.withDeviceFields(encodeExchangeAck(hash, appliedAcks, deletedAcks), nowUnix),
+        ackResponse);
     if (ackError.status != Status::Ok) {
       LOG_ERR("BORB", "bookmark exchange ack failed (%d)", ackError.httpStatus);
       outcome.hadErrors = true;
@@ -137,7 +138,8 @@ Error exchangeBookmarks(BookOrbitClient& client, CapabilityCache& capabilities, 
 
     std::string followUpBody;
     const Error followUp =
-        client.postJson(kBookmarkExchangePath, encodeBookmarkExchange(hash, {}, false, {}), followUpBody);
+        client.postJson(kBookmarkExchangePath,
+                        client.withDeviceFields(encodeBookmarkExchange(hash, {}, false, {}), nowUnix), followUpBody);
     if (followUp.status != Status::Ok) {
       LOG_ERR("BORB", "bookmark exchange follow-up failed (%d)", followUp.httpStatus);
       outcome.hadErrors = true;

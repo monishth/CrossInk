@@ -6,6 +6,7 @@ add_executable(BookOrbitClientTest
 )
 
 target_include_directories(BookOrbitClientTest PRIVATE
+  ${REPO_ROOT}/test/minibidi_arabic/stubs  # no-op Logging.h for host tests
   ${REPO_ROOT}/lib/BookOrbit
 )
 

@@ -133,7 +133,12 @@ bool BookOrbitProgressPhase::pushBulk(const std::vector<bookorbit::BulkProgressI
     }
 
     std::string response;
-    if (client.postJson(kBulkProgressPath, body, response).status != bookorbit::Status::Ok) return false;
+    // /koreader/plugin/* bodies must carry the device fields; PluginDeviceDto
+    // rejects the request with 400 without them.
+    if (client.postJson(kBulkProgressPath, client.withDeviceFields(body, nowUnix), response).status !=
+        bookorbit::Status::Ok) {
+      return false;
+    }
 
     std::vector<std::string> batchUnmatched;
     if (!bookorbit::decodeBulkProgressResponse(response, batchUnmatched)) return false;

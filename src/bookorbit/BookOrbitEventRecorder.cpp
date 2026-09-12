@@ -1,10 +1,10 @@
 #include "BookOrbitEventRecorder.h"
 
-#include <HalClock.h>
 #include <Logging.h>
 
 #include <ctime>
 
+#include "BookOrbitTime.h"
 #include "ClampPolicy.h"
 #include "Epub.h"
 #include "Memory.h"
@@ -46,17 +46,15 @@ std::unique_ptr<BookOrbitEventRecorder> BookOrbitEventRecorder::create(const std
   return std::unique_ptr<BookOrbitEventRecorder>(raw);
 }
 
-bool BookOrbitEventRecorder::recordPageDwell(Epub& epub, const int spineIndex, const float spineProgress,
+bool BookOrbitEventRecorder::recordPageDwell(const Epub& epub, const int spineIndex, const float spineProgress,
                                              const uint32_t dwellSeconds) {
   // Events require wall-clock time. Rather than fabricate a startTime — which
   // would corrupt every derived statistic irreversibly — the event is dropped.
-  if (!halClock.isAvailable()) return false;
-  uint16_t year = 0;
-  uint8_t month = 0;
-  uint8_t day = 0;
-  uint8_t hour = 0;
-  uint8_t minute = 0;
-  if (!halClock.getDateTime(year, month, day, hour, minute) || year == 0) return false;
+  uint32_t now = 0;
+  if (!bookorbit_time::deviceUnixTime(now)) {
+    LOG_DBG(kModule, "no trustworthy clock; not recording this page");
+    return false;
+  }
 
   // KOReader's rules: short dwells discarded, long ones clamped not dropped.
   const bookorbit::ClampSettings clamp;
@@ -91,7 +89,6 @@ bool BookOrbitEventRecorder::recordPageDwell(Epub& epub, const int spineIndex, c
   event.totalPages = totalPages;
   event.durationSeconds = duration;
   // The dwell just ended, so it began `duration` seconds ago.
-  const uint32_t now = static_cast<uint32_t>(std::time(nullptr));
   event.startTime = now > duration ? now - duration : now;
 
   // append() buffers and writes only every kFlushEveryNEvents, which is what

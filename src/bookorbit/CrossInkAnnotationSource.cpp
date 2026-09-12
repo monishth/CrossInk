@@ -21,6 +21,18 @@ std::string crossinkFormatDeviceDatetime(const uint32_t unixTime) {
   return buffer;
 }
 
+bool prepareStoresForBook(const std::shared_ptr<Epub>& epub) {
+  if (!epub) return false;
+  const std::string& path = epub->getPath();
+  if (path.empty()) return false;
+
+  const bool clippings = CLIPPINGS.loadForBook(path, epub->getTitle(), epub->getAuthor(), "epub");
+  const bool bookmarks = BOOKMARKS.loadForBook(path, epub->getTitle(), epub->getAuthor(), "epub");
+  if (!clippings) LOG_ERR("BORB", "could not load clippings for %s", path.c_str());
+  if (!bookmarks) LOG_ERR("BORB", "could not load bookmarks for %s", path.c_str());
+  return clippings && bookmarks;
+}
+
 bool collectBookOrbitAnnotations(const std::shared_ptr<Epub>& epub, std::vector<bookorbit::Annotation>& out) {
   if (!epub) {
     LOG_ERR("BORB", "no book loaded, cannot collect highlights");
@@ -107,6 +119,7 @@ size_t CrossInkAnnotationApplier::applyAdds(const std::vector<bookorbit::RemoteE
   for (const auto& remote : adds) {
     bookorbit::AppliedAck ack;
     ack.serverId = remote.serverId;
+    ack.version = remote.version;
 
     const std::string canonical = bookorbit::normalizeXPointer(remote.pos0);
     if (canonical.empty() || !epub) {

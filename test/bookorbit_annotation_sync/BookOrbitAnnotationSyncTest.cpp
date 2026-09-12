@@ -220,7 +220,7 @@ TEST(BookOrbitAnnotationSync, AppliesServerAddsAndAcknowledgesThem) {
   EXPECT_EQ(outcome.applied, 1u);
   EXPECT_EQ(applier.storedKeys.size(), 1u);
   ASSERT_EQ(transport.countTo("/koreader/plugin/annotations/exchange-ack"), 1u);
-  EXPECT_NE(transport.sent[1].body.find(R"("serverId":"4711")"), std::string::npos);
+  EXPECT_NE(transport.sent[1].body.find(R"("serverId":4711)"), std::string::npos);
   EXPECT_NE(transport.sent[1].body.find(R"("status":"applied")"), std::string::npos);
 }
 

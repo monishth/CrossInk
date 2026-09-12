@@ -17,6 +17,15 @@ std::string crossinkFormatDeviceDatetime(uint32_t unixTime);
 
 // Reads the currently loaded ClippingStore / BookmarkStore for the open book
 // and produces wire-shaped records. Both return false when no book is loaded.
+// Loads ClippingStore and BookmarkStore for this book.
+//
+// Both are per-book singletons that hold no path until loadForBook() is called,
+// and they silently refuse every read and write until then. The sync path never
+// opens the reader, so nothing else does this for us: without it the exchange
+// uploads an empty key set (making the server think the device has nothing) and
+// then fails to store everything the server sends back.
+bool prepareStoresForBook(const std::shared_ptr<Epub>& epub);
+
 bool collectBookOrbitAnnotations(const std::shared_ptr<Epub>& epub, std::vector<bookorbit::Annotation>& out);
 bool collectBookOrbitBookmarks(const std::shared_ptr<Epub>& epub, std::vector<bookorbit::Bookmark>& out);
 

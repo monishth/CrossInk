@@ -10,7 +10,8 @@
 ### Changed
 
 - Reading-time accounting now clamps a long dwell on one page to 120 seconds instead of discarding it, and counts a page only after 5 seconds instead of 2. Existing all-time totals are kept and shown separately, because the two rules are not comparable and must not be summed.
-- BookOrbit connections verify the server's TLS certificate against a root certificate you supply, and refuse to connect when none is configured.
+- BookOrbit connections verify the server's TLS certificate against a root certificate you supply, and refuse to connect when none is configured. Drop the certificate on the SD card as `.crosspoint/bookorbit_ca.pem` and the settings screen imports it, rather than typing it in.
+- TLS can now verify certificate chains signed with a 384-bit elliptic curve key. Previously only 256-bit curves were supported, so any server behind Google Trust Services — which covers most Cloudflare-fronted sites — could not be verified at all. This applies to CrossPoint sync too.
 
 ### Fixed
 

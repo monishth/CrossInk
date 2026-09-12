@@ -9,6 +9,20 @@ constexpr const char* kTag = "BOFILE";
 bool BookOrbitFileSink::open(const std::string_view path) {
   close();
   scratch_.assign(path);
+
+  // SdFat will not create a file whose parent directory is missing, and a
+  // download target is chosen by the caller rather than by the user browsing to
+  // it — so the folder may genuinely not exist yet. Create it rather than
+  // failing with an error that looks like a permissions or card problem.
+  const auto lastSlash = scratch_.find_last_of('/');
+  if (lastSlash != std::string::npos && lastSlash > 0) {
+    const std::string parent = scratch_.substr(0, lastSlash);
+    if (!Storage.exists(parent.c_str()) && !Storage.mkdir(parent.c_str(), true)) {
+      LOG_ERR(kTag, "Could not create %s", parent.c_str());
+      return false;
+    }
+  }
+
   if (!Storage.remove(scratch_.c_str()) && Storage.exists(scratch_.c_str())) {
     LOG_ERR(kTag, "Could not clear %s", scratch_.c_str());
     return false;

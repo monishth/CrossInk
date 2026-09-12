@@ -23,7 +23,13 @@ class BookOrbitSyncActivity final : public Activity {
  public:
   static constexpr const char* NAME = "BookOrbitSync";
 
-  BookOrbitSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string epubPath);
+  // ConnectionTest authenticates and negotiates capabilities without touching a
+  // book. It shares this activity because it needs the same thing Sync does:
+  // Wi-Fi, which only exists after a silent restart into the network boot path.
+  enum class Mode { Sync, ConnectionTest };
+
+  BookOrbitSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string epubPath,
+                        Mode mode = Mode::Sync);
 
   void onEnter() override;
   void onExit() override;
@@ -31,11 +37,14 @@ class BookOrbitSyncActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
+  Mode mode = Mode::Sync;
   std::string epubPath;
   std::string bookHash;
 
   bookorbit::SyncOutbox outbox;
   bool finished = false;
+  // A network boot target boots minimally; Wi-Fi is this activity's job.
+  bool networkReady = false;
   bool started = false;
   bool matched = false;          // the server acknowledged this hash
   bool degradedLanding = false;  // a position resolved only by percentage
@@ -48,6 +57,7 @@ class BookOrbitSyncActivity final : public Activity {
 
   std::shared_ptr<Epub> epub;
 
+  void runConnectionTest();
   void stepOnePhase();
   const char* phaseLabel(bookorbit::SyncPhase phase) const;
 };

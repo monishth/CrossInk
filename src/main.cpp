@@ -1554,6 +1554,19 @@ void setup() {
         }
         break;
       }
+      case NetworkBootTarget::BOOKORBIT_TEST: {
+        // No book needed: this only authenticates and negotiates capabilities.
+        auto testActivity = makeUniqueNoThrow<BookOrbitSyncActivity>(
+            renderer, mappedInputManager, std::string{}, BookOrbitSyncActivity::Mode::ConnectionTest);
+        if (testActivity) {
+          activityManager.replaceActivity(std::move(testActivity));
+          launched = true;
+        } else {
+          LOG_ERR("MAIN", "OOM: BookOrbit connection test after minimal boot (free=%u maxAlloc=%u)",
+                  ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+        }
+        break;
+      }
       case NetworkBootTarget::BOOKORBIT_CATALOG: {
         auto catalogActivity = makeUniqueNoThrow<BookOrbitCatalogActivity>(renderer, mappedInputManager);
         if (catalogActivity) {
