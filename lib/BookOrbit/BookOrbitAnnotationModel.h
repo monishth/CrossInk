@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -65,5 +66,23 @@ NormalizedAnnotations normalizeAnnotations(const std::vector<Annotation>& raw);
 std::string buildAnnotationKey(std::string_view datetime, std::string_view pos0);
 
 std::vector<AnnotationKey> collectAnnotationKeys(const std::vector<Annotation>& normalized);
+
+// True when every key in the set is distinct. Two entries sharing a key are
+// one annotation as far as the server is concerned, so a set with collisions
+// undercounts the device and cannot serve as a deletion census: the entries it
+// fails to name would be deleted. CrossInk derives its keys from a position
+// coarser than KOReader's, so collisions are a real possibility rather than a
+// theoretical one. Templated over AnnotationKey and BookmarkKey, which differ
+// only in name.
+template <typename Key>
+bool keysAreDistinct(const std::vector<Key>& keys) {
+  // Sorting views of the 32-char hashes keeps this O(n log n) with one
+  // allocation, rather than a set node per entry on a 380 KB device.
+  std::vector<std::string_view> sorted;
+  sorted.reserve(keys.size());
+  for (const auto& key : keys) sorted.emplace_back(key.k);
+  std::sort(sorted.begin(), sorted.end());
+  return std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end();
+}
 
 }  // namespace bookorbit

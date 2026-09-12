@@ -255,6 +255,50 @@ TEST(BookOrbitAnnotationSync, AllHighlightsUnmappableSendsKeysCompleteFalse) {
   EXPECT_NE(transport.sent[0].body.find(R"("keysComplete":false)"), std::string::npos);
 }
 
+// Observed on hardware: 24 highlights on the device collapsed to 2 distinct
+// keys, because every one carried the same boot-relative timestamp. The server
+// deduped 24 down to 2, found the 8 identities it already knew missing from the
+// set, and soft-deleted all 8. A colliding key set names fewer annotations than
+// the device holds, so it can never be the deletion census.
+TEST(BookOrbitAnnotationSync, CollidingKeysSendKeysCompleteFalse) {
+  ScriptedTransport transport;
+  transport.repeatLast = true;
+  transport.queued = {{200, false, emptyResponse()}};
+  auto client = makeClient(transport);
+  RecordingApplier applier;
+  bookorbit::BookSyncState book;
+
+  auto raw = highlights(4);
+  raw[3].datetime = raw[1].datetime;  // same stamp...
+  raw[3].pos0 = raw[1].pos0;          // ...and the same coarse position
+  const auto local = normalizeAnnotations(raw);
+  ASSERT_EQ(local.entries.size(), 4u);
+  ASSERT_TRUE(local.complete);  // nothing was dropped; the keys simply collide
+
+  ExchangeOutcome outcome;
+  exchangeAnnotations(client, book, kHash, local, applier, kNow, outcome);
+  ASSERT_FALSE(transport.sent.empty());
+  EXPECT_NE(transport.sent[0].body.find(R"("keysComplete":false)"), std::string::npos);
+  EXPECT_EQ(book.annSignature[0], '\0');
+}
+
+// The ordinary case must stay authoritative: distinct keys still enable
+// deletion detection, which is the whole point of sending them.
+TEST(BookOrbitAnnotationSync, DistinctKeysStayAuthoritative) {
+  ScriptedTransport transport;
+  transport.repeatLast = true;
+  transport.queued = {{200, false, emptyResponse()}};
+  auto client = makeClient(transport);
+  RecordingApplier applier;
+  bookorbit::BookSyncState book;
+  const auto local = normalizeAnnotations(highlights(4));
+
+  ExchangeOutcome outcome;
+  exchangeAnnotations(client, book, kHash, local, applier, kNow, outcome);
+  ASSERT_FALSE(transport.sent.empty());
+  EXPECT_NE(transport.sent[0].body.find(R"("keysComplete":true)"), std::string::npos);
+}
+
 TEST(BookOrbitAnnotationSync, AppliesServerAddsAndAcknowledgesThem) {
   ScriptedTransport transport;
   transport.queued = {{200, false, oneAddResponse(false)}, {200, false, "{}"}};

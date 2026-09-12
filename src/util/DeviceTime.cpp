@@ -1,4 +1,4 @@
-#include "BookOrbitTime.h"
+#include "DeviceTime.h"
 
 #include <HalClock.h>
 
@@ -17,9 +17,9 @@ long daysFromCivil(int y, const unsigned m, const unsigned d) {
 
 }  // namespace
 
-namespace bookorbit_time {
+namespace device_time {
 
-bool deviceUnixTime(uint32_t& out) {
+bool unixTime(uint32_t& out) {
   out = 0;
   if (!halClock.isAvailable()) return false;
 
@@ -41,4 +41,4 @@ bool deviceUnixTime(uint32_t& out) {
   return true;
 }
 
-}  // namespace bookorbit_time
+}  // namespace device_time

@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "BookOrbitAnnotationModel.h"
 #include "BookOrbitExchangeAck.h"
 #include "BookOrbitExchangePolicy.h"
 #include "BookOrbitExchangeRequest.h"
@@ -61,9 +62,13 @@ Error exchangeBookmarks(BookOrbitClient& client, CapabilityCache& capabilities, 
 
   const std::vector<BookmarkKey> keys = collectBookmarkKeys(local.entries);
   // See exchangeAnnotations(): an incomplete key set is not a deletion list.
-  const bool keysComplete = local.complete && keys.size() <= kMaxBookmarkKeysPerBook;
+  const bool keysDistinct = keysAreDistinct(keys);
+  const bool keysComplete = local.complete && keysDistinct && keys.size() <= kMaxBookmarkKeysPerBook;
   if (!local.complete) {
     LOG_ERR("BORB", "some bookmarks could not be mapped; skipping deletion detection for this book");
+  }
+  if (!keysDistinct) {
+    LOG_ERR("BORB", "bookmark identities collide; skipping deletion detection for this book");
   }
 
   ExchangeResponse response;

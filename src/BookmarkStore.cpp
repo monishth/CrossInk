@@ -1,5 +1,6 @@
 #include "BookmarkStore.h"
 
+#include <Arduino.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Serialization.h>
@@ -9,7 +10,22 @@
 #include <functional>
 #include <limits>
 
+#include "util/DeviceTime.h"
+
 namespace {
+
+// Wall clock when the RTC has one, uptime otherwise. The value is never shown
+// to the reader; it exists so an entry has a stable identity. BookOrbit keys
+// annotations on md5(datetime|position), so a boot-relative stamp gave every
+// entry made N seconds after power-on the same identity, across sessions and
+// across books. Colliding identities read to the server as a single annotation,
+// and the identities that then went missing read as deletions the reader never
+// made.
+uint32_t stableStamp() {
+  uint32_t now = 0;
+  if (device_time::unixTime(now)) return now;
+  return static_cast<uint32_t>(millis() / 1000UL);
+}
 constexpr uint8_t LEGACY_VERSION = 2;
 constexpr uint8_t COUNT_U16_VERSION = 3;
 constexpr uint8_t PARAGRAPH_ANCHOR_VERSION = 4;
@@ -342,7 +358,7 @@ BookmarkStore::AddResult BookmarkStore::addBookmark(uint16_t spineIndex, float p
   Bookmark bm{};
   bm.spineIndex = spineIndex;
   bm.progress = progress;
-  bm.timestamp = 0;  // ESP32-C3 has no battery-backed RTC; reserved for future use
+  bm.timestamp = stableStamp();
   snprintf(bm.chapterTitle, sizeof(bm.chapterTitle), "%s", chapterTitle ? chapterTitle : "");
   bm.paragraphIndex = paragraphIndex;
   snprintf(bm.snippet, sizeof(bm.snippet), "%s", snippet ? snippet : "");

@@ -12,8 +12,22 @@
 #include <functional>
 
 #include "clippings/ClippingPreview.h"
+#include "util/DeviceTime.h"
 
 namespace {
+
+// Wall clock when the RTC has one, uptime otherwise. The value is never shown
+// to the reader; it exists so an entry has a stable identity. BookOrbit keys
+// annotations on md5(datetime|position), so a boot-relative stamp gave every
+// entry made N seconds after power-on the same identity, across sessions and
+// across books. Colliding identities read to the server as a single annotation,
+// and the identities that then went missing read as deletions the reader never
+// made.
+uint32_t stableStamp() {
+  uint32_t now = 0;
+  if (device_time::unixTime(now)) return now;
+  return static_cast<uint32_t>(millis() / 1000UL);
+}
 constexpr uint8_t LEGACY_VERSION = 1;
 constexpr uint8_t TEXT_OFFSET_VERSION = 2;
 constexpr uint8_t LAYOUT_SIGNATURE_VERSION = 3;
@@ -144,7 +158,7 @@ ClippingStore::AddResult ClippingStore::addClipping(const uint16_t spineIndex, c
   clipping.endWordIndex = endWordIndex;
   clipping.wordCount = wordCount;
   clipping.paragraphIndex = paragraphIndex;
-  clipping.timestamp = static_cast<uint32_t>(millis() / 1000UL);
+  clipping.timestamp = stableStamp();
   clipping.layoutSignature = layoutSignature;
   clipping.tableSelection = tableSelection;
   copyBounded(clipping.chapterTitle, sizeof(clipping.chapterTitle), chapterTitle);

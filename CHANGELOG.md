@@ -15,6 +15,8 @@
 
 ### Fixed
 
+- Highlights and bookmarks are stamped with the real date and time instead of seconds since the device booted. The old stamp was never shown to you, but BookOrbit identifies a highlight by its timestamp and position, so two highlights made the same number of seconds after two different power-ons looked like the same highlight — and the ones that went missing from that count looked like highlights you had deleted. On a device with no real-time clock the old behaviour remains as a fallback.
+- BookOrbit sync no longer treats a list of highlights it cannot vouch for as a list of deletions. If two highlights end up sharing an identity, or one could not be read or positioned, sync now tells the server the list is partial instead of letting it delete what the list fails to name.
 - BookOrbit sync no longer reports highlights or bookmarks as deleted when it simply could not read them. The device sends the server a list of everything it holds, and the server treats anything missing from that list as deleted by you. If the highlight store failed to load, or a highlight's position could not be mapped, it dropped out of that list while still claiming to be complete — so the server deleted highlights nobody had touched. Sync now either sends a list it can vouch for or tells the server the list is partial.
 - KOReader reading positions from any current version of KOReader now resolve correctly. The previous code only understood the pre-2020 xpointer form, so every position written by a modern KOReader silently fell back to a percentage-based guess.
 - The simulator builds again on current toolchains.

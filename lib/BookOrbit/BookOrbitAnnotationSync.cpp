@@ -43,9 +43,13 @@ Error exchangeAnnotations(BookOrbitClient& client, BookSyncState& book, const st
   // Authoritative only when the set is whole. The server reads a key it does
   // not see as a highlight the user deleted and soft-deletes it, so a set
   // thinned by chunk-capping OR by normalization must go out as advisory.
-  const bool keysComplete = local.complete && keys.size() <= kMaxAnnotationKeysPerBook;
+  const bool keysDistinct = keysAreDistinct(keys);
+  const bool keysComplete = local.complete && keysDistinct && keys.size() <= kMaxAnnotationKeysPerBook;
   if (!local.complete) {
     LOG_ERR("BORB", "some highlights could not be mapped; skipping deletion detection for this book");
+  }
+  if (!keysDistinct) {
+    LOG_ERR("BORB", "highlight identities collide; skipping deletion detection for this book");
   }
 
   ExchangeResponse response;
