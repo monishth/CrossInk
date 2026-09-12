@@ -66,10 +66,16 @@ NormalizedBookmarks normalizeBookmarks(const std::vector<Bookmark>& raw) {
   uint32_t mix = 0;
 
   for (const auto& candidate : raw) {
-    if (!isDeviceDatetime(candidate.datetime)) continue;
+    if (!isDeviceDatetime(candidate.datetime)) {
+      normalized.complete = false;
+      continue;
+    }
 
     const std::string canonicalPos = normalizeXPointer(candidate.pos);
-    if (canonicalPos.empty()) continue;
+    if (canonicalPos.empty()) {
+      normalized.complete = false;
+      continue;
+    }
 
     Bookmark entry;
     entry.datetime = candidate.datetime;

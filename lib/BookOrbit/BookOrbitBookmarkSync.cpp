@@ -60,7 +60,11 @@ Error exchangeBookmarks(BookOrbitClient& client, CapabilityCache& capabilities, 
   }
 
   const std::vector<BookmarkKey> keys = collectBookmarkKeys(local.entries);
-  const bool keysComplete = keys.size() <= kMaxBookmarkKeysPerBook;
+  // See exchangeAnnotations(): an incomplete key set is not a deletion list.
+  const bool keysComplete = local.complete && keys.size() <= kMaxBookmarkKeysPerBook;
+  if (!local.complete) {
+    LOG_ERR("BORB", "some bookmarks could not be mapped; skipping deletion detection for this book");
+  }
 
   ExchangeResponse response;
   ExchangeBookResult pending;

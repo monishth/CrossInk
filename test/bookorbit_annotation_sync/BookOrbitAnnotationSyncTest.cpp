@@ -207,6 +207,54 @@ TEST(BookOrbitAnnotationSync, OverTheKeyCapSendsKeysCompleteFalse) {
   EXPECT_EQ(book.annSignature[0], '\0');
 }
 
+// A highlight CrossInk cannot map to an xpointer is dropped by
+// normalizeAnnotations, but it is still in the book. Claiming the surviving
+// keys are the whole truth makes the server soft-delete the dropped ones --
+// the device reporting a deletion the reader never made.
+TEST(BookOrbitAnnotationSync, ADroppedHighlightSendsKeysCompleteFalse) {
+  ScriptedTransport transport;
+  transport.repeatLast = true;
+  transport.queued = {{200, false, emptyResponse()}};
+  auto client = makeClient(transport);
+  RecordingApplier applier;
+  bookorbit::BookSyncState book;
+
+  auto raw = highlights(4);
+  raw[2].pos0 = "not an xpointer";  // ProgressMapper failing on one clipping
+  const auto local = normalizeAnnotations(raw);
+  ASSERT_EQ(local.entries.size(), 3u);
+  ASSERT_FALSE(local.complete);
+
+  ExchangeOutcome outcome;
+  exchangeAnnotations(client, book, kHash, local, applier, kNow, outcome);
+  ASSERT_FALSE(transport.sent.empty());
+  EXPECT_NE(transport.sent[0].body.find(R"("keysComplete":false)"), std::string::npos);
+  // Not authoritative, so the book stays unstamped and re-exchanges next time.
+  EXPECT_EQ(book.annSignature[0], '\0');
+}
+
+// The whole-and-unmapped case: zero readable highlights must never go out as
+// "the user deleted all of them".
+TEST(BookOrbitAnnotationSync, AllHighlightsUnmappableSendsKeysCompleteFalse) {
+  ScriptedTransport transport;
+  transport.repeatLast = true;
+  transport.queued = {{200, false, emptyResponse()}};
+  auto client = makeClient(transport);
+  RecordingApplier applier;
+  bookorbit::BookSyncState book;
+
+  auto raw = highlights(3);
+  for (auto& entry : raw) entry.pos0.clear();
+  const auto local = normalizeAnnotations(raw);
+  ASSERT_TRUE(local.entries.empty());
+  ASSERT_FALSE(local.complete);
+
+  ExchangeOutcome outcome;
+  exchangeAnnotations(client, book, kHash, local, applier, kNow, outcome);
+  ASSERT_FALSE(transport.sent.empty());
+  EXPECT_NE(transport.sent[0].body.find(R"("keysComplete":false)"), std::string::npos);
+}
+
 TEST(BookOrbitAnnotationSync, AppliesServerAddsAndAcknowledgesThem) {
   ScriptedTransport transport;
   transport.queued = {{200, false, oneAddResponse(false)}, {200, false, "{}"}};

@@ -41,6 +41,13 @@ struct NormalizedAnnotations {
   std::vector<Annotation> entries;
   std::string maxDatetime;  // max of (datetimeUpdated ? datetimeUpdated : datetime)
   std::string signature;    // "count:maxDatetime:hash1:hash2"
+  // False when normalization dropped at least one raw entry. Those entries are
+  // still on the device, so the key set no longer describes it and must not go
+  // out as authoritative: the server treats a missing key as a user deletion.
+  // KOReader never hits this, because it reads pos0 and datetime verbatim out
+  // of the sidecar. CrossInk regenerates both from its own model, so a position
+  // it cannot map becomes a hole in the key set rather than a hole in the book.
+  bool complete = true;
 };
 
 // True for exactly "YYYY-MM-DD HH:MM:SS". BookOrbit keys on this string, so a

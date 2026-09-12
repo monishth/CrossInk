@@ -40,7 +40,13 @@ Error exchangeAnnotations(BookOrbitClient& client, BookSyncState& book, const st
   }
 
   const std::vector<AnnotationKey> keys = collectAnnotationKeys(local.entries);
-  const bool keysComplete = keys.size() <= kMaxAnnotationKeysPerBook;
+  // Authoritative only when the set is whole. The server reads a key it does
+  // not see as a highlight the user deleted and soft-deletes it, so a set
+  // thinned by chunk-capping OR by normalization must go out as advisory.
+  const bool keysComplete = local.complete && keys.size() <= kMaxAnnotationKeysPerBook;
+  if (!local.complete) {
+    LOG_ERR("BORB", "some highlights could not be mapped; skipping deletion detection for this book");
+  }
 
   ExchangeResponse response;
   ExchangeBookResult pending;

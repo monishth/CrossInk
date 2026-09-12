@@ -89,11 +89,16 @@ NormalizedAnnotations normalizeAnnotations(const std::vector<Annotation>& raw) {
   uint32_t mix = 0;
 
   for (const auto& candidate : raw) {
-    if (!isAllowedDrawer(candidate.drawer)) continue;
-    if (!isDeviceDatetime(candidate.datetime)) continue;
+    if (!isAllowedDrawer(candidate.drawer) || !isDeviceDatetime(candidate.datetime)) {
+      normalized.complete = false;
+      continue;
+    }
 
     const std::string canonicalPos0 = normalizeXPointer(candidate.pos0);
-    if (canonicalPos0.empty()) continue;
+    if (canonicalPos0.empty()) {
+      normalized.complete = false;
+      continue;
+    }
 
     Annotation entry;
     entry.datetime = candidate.datetime;

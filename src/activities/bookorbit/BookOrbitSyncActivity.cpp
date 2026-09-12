@@ -392,11 +392,17 @@ void BookOrbitSyncActivity::stepOnePhase() {
       }
 
       // Both stores are unloaded on this path; without this the exchange sends
-      // an empty key set and cannot store anything the server returns.
-      prepareStoresForBook(epub);
-
+      // an empty key set and cannot store anything the server returns. An empty
+      // key set is not harmless: the server reads it as "the user deleted every
+      // highlight in this book" and soft-deletes them all. So a store that will
+      // not load has to stop the exchange, not shrink it.
       std::vector<bookorbit::Annotation> raw;
-      collectBookOrbitAnnotations(epub, raw);
+      if (!prepareStoresForBook(epub) || !collectBookOrbitAnnotations(epub, raw)) {
+        LOG_ERR(kModule, "highlights unreadable for %s; skipping the exchange rather than reporting none",
+                epub->getPath().c_str());
+        phaseRan = false;
+        break;
+      }
       const auto local = bookorbit::normalizeAnnotations(raw);
 
       CrossInkAnnotationApplier applier(epub, false);
@@ -417,10 +423,15 @@ void BookOrbitSyncActivity::stepOnePhase() {
         break;
       }
 
-      prepareStoresForBook(epub);
-
+      // Same rule as the annotation phase: no readable list means no key set,
+      // and no key set means the server must not be told one.
       std::vector<bookorbit::Bookmark> raw;
-      collectBookOrbitBookmarks(epub, raw);
+      if (!prepareStoresForBook(epub) || !collectBookOrbitBookmarks(epub, raw)) {
+        LOG_ERR(kModule, "bookmarks unreadable for %s; skipping the exchange rather than reporting none",
+                epub->getPath().c_str());
+        phaseRan = false;
+        break;
+      }
       const auto local = bookorbit::normalizeBookmarks(raw);
 
       CrossInkAnnotationApplier applier(epub, true);

@@ -15,6 +15,7 @@
 
 ### Fixed
 
+- BookOrbit sync no longer reports highlights or bookmarks as deleted when it simply could not read them. The device sends the server a list of everything it holds, and the server treats anything missing from that list as deleted by you. If the highlight store failed to load, or a highlight's position could not be mapped, it dropped out of that list while still claiming to be complete — so the server deleted highlights nobody had touched. Sync now either sends a list it can vouch for or tells the server the list is partial.
 - KOReader reading positions from any current version of KOReader now resolve correctly. The previous code only understood the pre-2020 xpointer form, so every position written by a modern KOReader silently fell back to a percentage-based guess.
 - The simulator builds again on current toolchains.
 

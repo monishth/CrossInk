@@ -31,6 +31,9 @@ struct NormalizedBookmarks {
   std::vector<Bookmark> entries;
   std::string maxDatetime;
   std::string signature;  // "count:maxDatetime:hash1:hash2"
+  // See NormalizedAnnotations::complete: false means the key set has holes and
+  // cannot be sent as authoritative.
+  bool complete = true;
 };
 
 NormalizedBookmarks normalizeBookmarks(const std::vector<Bookmark>& raw);
