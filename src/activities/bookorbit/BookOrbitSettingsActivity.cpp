@@ -1,7 +1,9 @@
 #include "BookOrbitSettingsActivity.h"
 
 #include <GfxRenderer.h>
+#include <HalStorage.h>
 #include <I18n.h>
+#include <Logging.h>
 
 #include "BookOrbitClient.h"
 #include "BookOrbitError.h"
@@ -56,6 +58,13 @@ bool needsCertificateAndHasNone() {
   const std::string& url = BOOKORBIT_STORE.getServerUrl();
   return url.rfind("https://", 0) == 0 && BOOKORBIT_STORE.getRootCaPem().empty();
 }
+
+// Dropping a PEM on the SD card beats typing ~1300 characters of base64 on an
+// e-reader keyboard, which is the only other input this device has.
+constexpr char kRootCaImportPath[] = "/.crosspoint/bookorbit_ca.pem";
+// A single root certificate is ~1-2 KB; anything larger is a bundle or the
+// wrong file, and SecureHttpClient::setCACert() takes one root, not a bundle.
+constexpr size_t kMaxRootCaBytes = 8 * 1024;
 
 constexpr char kAuthPath[] = "/koreader/users/auth";
 constexpr char kVersionPath[] = "/koreader/plugin/version";
@@ -179,10 +188,13 @@ void BookOrbitSettingsActivity::handleSelection() {
           });
       break;
     case ROW_ROOT_CA:
-      // A PEM is long, but typing it is the only input this device has, and the
-      // certificate is what makes the connection verifiable at all — so the row
-      // is editable rather than read-only. The keyboard cap is generous enough
-      // for a single root certificate.
+      // Prefer importing from the card. Typing a PEM is possible but awful, so
+      // it is the fallback rather than the primary path.
+      if (importRootCaFromSd()) {
+        BOOKORBIT_STORE.saveToFile();
+        requestUpdate();
+        break;
+      }
       startActivityForResult(
           std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_BOOKORBIT_ROOT_CA),
                                                   BOOKORBIT_STORE.getRootCaPem(), 2048, InputType::Text),
@@ -227,6 +239,52 @@ void BookOrbitSettingsActivity::handleSelection() {
       silentRestartToNetwork(NetworkBootTarget::BOOKORBIT_CATALOG);
       break;
   }
+}
+
+bool BookOrbitSettingsActivity::importRootCaFromSd() {
+  if (!Storage.exists(kRootCaImportPath)) {
+    statusMessage = tr(STR_BOOKORBIT_CA_NO_FILE);
+    return false;
+  }
+
+  FsFile file;
+  if (!Storage.openFileForRead("BORB", kRootCaImportPath, file)) {
+    LOG_ERR("BORB", "cannot open %s", kRootCaImportPath);
+    statusMessage = tr(STR_BOOKORBIT_CA_IMPORT_FAILED);
+    return false;
+  }
+
+  const size_t size = file.size();
+  if (size == 0 || size > kMaxRootCaBytes) {
+    LOG_ERR("BORB", "%s is %u bytes; expected 1..%u", kRootCaImportPath, static_cast<unsigned>(size),
+            static_cast<unsigned>(kMaxRootCaBytes));
+    file.close();
+    statusMessage = tr(STR_BOOKORBIT_CA_IMPORT_FAILED);
+    return false;
+  }
+
+  std::string pem(size, '\0');
+  const int got = file.read(pem.data(), size);
+  file.close();
+  if (got < 0 || static_cast<size_t>(got) != size) {
+    LOG_ERR("BORB", "short read on %s", kRootCaImportPath);
+    statusMessage = tr(STR_BOOKORBIT_CA_IMPORT_FAILED);
+    return false;
+  }
+
+  // Cheapest possible sanity check: wolfSSL wants PEM, and a DER file or a
+  // stray text file would otherwise fail much later, at handshake time, where
+  // it looks like a network fault.
+  if (pem.find("-----BEGIN CERTIFICATE-----") == std::string::npos) {
+    LOG_ERR("BORB", "%s is not a PEM certificate", kRootCaImportPath);
+    statusMessage = tr(STR_BOOKORBIT_CA_NOT_PEM);
+    return false;
+  }
+
+  BOOKORBIT_STORE.setRootCaPem(pem);
+  LOG_INF("BORB", "imported root certificate from %s (%u bytes)", kRootCaImportPath, static_cast<unsigned>(size));
+  statusMessage = tr(STR_BOOKORBIT_CA_IMPORTED);
+  return true;
 }
 
 void BookOrbitSettingsActivity::runConnectionTest() {

@@ -894,3 +894,7 @@ STR_BOOKORBIT_APPROXIMATE_BODY: "The exact position could not be resolved, so th
 STR_BOOKORBIT_SYNC_PARTIAL: "Partly synced"
 STR_BOOKORBIT_NO_BOOK: "Open a book first"
 STR_BOOKORBIT_UNTITLED: "Untitled"
+STR_BOOKORBIT_CA_IMPORTED: "Certificate imported"
+STR_BOOKORBIT_CA_NO_FILE: "Put bookorbit_ca.pem in .crosspoint"
+STR_BOOKORBIT_CA_IMPORT_FAILED: "Could not read certificate"
+STR_BOOKORBIT_CA_NOT_PEM: "Not a PEM certificate"

@@ -49,5 +49,10 @@ class BookOrbitSettingsActivity final : public Activity {
   void buildListScreen(UiApp::ScreenType& screen);
 
   void handleSelection();
+  // Reads /.crosspoint/bookorbit_ca.pem into the store. Returns false (and
+  // sets statusMessage) when there is no usable file, so the caller can fall
+  // back to keyboard entry.
+  bool importRootCaFromSd();
+
   void runConnectionTest();
 };
