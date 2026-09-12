@@ -46,9 +46,10 @@ class BookOrbitSyncActivity final : public Activity {
   // A network boot target boots minimally; Wi-Fi is this activity's job.
   bool networkReady = false;
   bool started = false;
-  bool matched = false;          // the server acknowledged this hash
-  bool degradedLanding = false;  // a position resolved only by percentage
-  int skippedPhases = 0;         // phases with no device-side source wired yet
+  bool matched = false;                // the server acknowledged this hash
+  bool degradedLanding = false;        // newer progress elsewhere, but nothing to land on
+  bool appliedRemotePosition = false;  // the reader was moved to another device's position
+  int skippedPhases = 0;               // phases with no device-side source wired yet
   std::string statusMessage;
 
   // Metadata-only load, shared by the progress and annotation phases. Null

@@ -210,10 +210,13 @@ void BookOrbitSyncActivity::stepOnePhase() {
   if (phase == bookorbit::SyncPhase::Done) {
     if (outbox.hadErrors()) {
       statusMessage = tr(STR_BOOKORBIT_SYNC_FAILED);
+    } else if (appliedRemotePosition) {
+      // The reader was moved. Say so, or the next page turn looks like a bug.
+      statusMessage = tr(STR_BOOKORBIT_POSITION_UPDATED);
     } else if (degradedLanding) {
-      // An approximate landing outranks "complete": the user needs to know the
-      // position was resolved by percentage, not exactly. Setting it during the
-      // phase would be overwritten by this message, so it is carried here.
+      // Newer progress exists elsewhere but arrived without a position this
+      // reader can land on, so nothing moved. Setting it during the phase would
+      // be overwritten by this message, so it is carried here.
       statusMessage = tr(STR_BOOKORBIT_APPROXIMATE_POSITION);
     } else if (skippedPhases > 0) {
       // Never report a clean sync when phases did not actually run.
@@ -363,19 +366,52 @@ void BookOrbitSyncActivity::stepOnePhase() {
 
       BookOrbitProgressPhase progress(client, epub, identity.deviceModel, identity.deviceId, nowUnix);
 
+      // When this device last *read* this book, which is not the same as when
+      // it last synced. The reading event log is the only record of it, and it
+      // is what decides whether the server's position outranks ours.
+      BookOrbitBlobStore readBlobs;
+      bookorbit::ReadingEventLog readLog(readBlobs, "/.crosspoint/bookorbit_events_" + bookHash + ".bin");
+      uint32_t localReadAt = 0;
+      readLog.maxStartTime(localReadAt);
+
       // Pull first: an inbound position is only useful before we overwrite it.
       bookorbit::ResolvedProgress resolved;
-      if (progress.pull(bookHash, localPercentage, resolved)) {
-        // Never apply a degraded landing silently — say so on screen.
-        if (resolved.jumpNeedsNotice) {
-          LOG_INF(kModule, "degraded landing: remote %.4f local %.4f", static_cast<double>(resolved.percentage),
-                  static_cast<double>(localPercentage));
-          degradedLanding = true;
-        }
-      }
+      const bool havePull = progress.pull(bookHash, localPercentage, resolved);
+      const bookorbit::ProgressAction action =
+          havePull ? bookorbit::decideProgressAction(resolved, localReadAt, identity.deviceId)
+                   : bookorbit::ProgressAction::PushLocal;
 
-      if (!progress.push(bookHash, here, localPercentage)) {
-        result = bookorbit::Error{bookorbit::Status::ServerError, 0};
+      switch (action) {
+        case bookorbit::ProgressAction::ApplyRemote: {
+          // Write the other device's position into the reader's own progress
+          // file. Page number and count are left at zero deliberately: the
+          // offset is the authority, and the reader repositions from it once
+          // the section is laid out for this screen and font.
+          if (EpubReaderUtils::saveProgress(*epub, resolved.spineIndex, 0, 0, resolved.visibleTextOffset)) {
+            LOG_INF(kModule, "applied remote position: spine=%d offset=%u (%.2f%%) from %s", resolved.spineIndex,
+                    static_cast<unsigned>(resolved.visibleTextOffset), static_cast<double>(resolved.percentage) * 100.0,
+                    resolved.remoteDeviceId.c_str());
+            appliedRemotePosition = true;
+          } else {
+            LOG_ERR(kModule, "could not save the remote position for %s", bookHash.c_str());
+            result = bookorbit::Error{bookorbit::Status::ServerError, 0};
+          }
+          break;
+        }
+
+        case bookorbit::ProgressAction::HoldBoth:
+          // Newer elsewhere but only as a percentage, so there is nothing to
+          // land on here. Pushing would overwrite it with an older position.
+          LOG_INF(kModule, "remote is newer but only approximate (%.2f%%); leaving both sides alone",
+                  static_cast<double>(resolved.percentage) * 100.0);
+          degradedLanding = true;
+          break;
+
+        case bookorbit::ProgressAction::PushLocal:
+          if (!progress.push(bookHash, here, localPercentage)) {
+            result = bookorbit::Error{bookorbit::Status::ServerError, 0};
+          }
+          break;
       }
       break;
     }

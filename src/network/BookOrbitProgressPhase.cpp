@@ -94,6 +94,8 @@ bool BookOrbitProgressPhase::pull(const std::string& md5, const float localPerce
   bookorbit::XPointer target;
   bool resolved = false;
   float resolvedPercentage = 0.0f;
+  int resolvedSpine = -1;
+  uint32_t resolvedOffset = 0;
   if (bookorbit::parseXPointer(remote.progress, target)) {
     // Legacy-DOM xpointers carry crengine's synthetic boxing steps, which have
     // no counterpart in the source XHTML we are about to walk.
@@ -107,12 +109,20 @@ bool BookOrbitProgressPhase::pull(const std::string& md5, const float localPerce
       if (bookorbit::resolveXPointerToOffset(xhtml, target, offset) && bookorbit::visibleTextLength(xhtml, length) &&
           length > 0) {
         resolved = true;
+        resolvedSpine = spineIndex;
+        resolvedOffset = offset;
         resolvedPercentage = spinePercentage(spineIndex, static_cast<float>(offset) / static_cast<float>(length));
       }
     }
   }
 
   out = bookorbit::chooseRemoteProgress(remote, resolved, resolvedPercentage, localPercentage);
+  // The spine and offset are what makes the landing applicable rather than
+  // merely describable; they were being computed and discarded.
+  if (out.source == bookorbit::ProgressSource::Xpointer) {
+    out.spineIndex = resolvedSpine;
+    out.visibleTextOffset = resolvedOffset;
+  }
   return out.source != bookorbit::ProgressSource::None;
 }
 

@@ -4,10 +4,13 @@
 #include "lib/BookOrbit/ProgressResolution.h"
 
 using bookorbit::chooseRemoteProgress;
+using bookorbit::decideProgressAction;
 using bookorbit::isSendable;
 using bookorbit::kDegradedJumpThreshold;
+using bookorbit::ProgressAction;
 using bookorbit::ProgressRecord;
 using bookorbit::ProgressSource;
+using bookorbit::ResolvedProgress;
 
 namespace {
 
@@ -115,4 +118,88 @@ TEST(ProgressResolution, EmptyRemoteResolvesToNothing) {
 TEST(ProgressResolution, NormalizesTheChosenXpointer) {
   const auto chosen = chooseRemoteProgress(remote("/body/DocFragment[2]/body/p[3]", 0.3f), true, 0.3f, 0.3f);
   EXPECT_EQ(chosen.xpointer, "/body[1]/DocFragment[2]/body[1]/p[3]");
+}
+
+namespace {
+
+constexpr char kThisDevice[] = "crossink-900ed53f1fb8";
+
+// A landing this device could actually open: an exact xpointer that resolved to
+// a spine item and an offset.
+ResolvedProgress landable(const uint32_t timestamp, const char* deviceId) {
+  ResolvedProgress resolved;
+  resolved.source = ProgressSource::Xpointer;
+  resolved.xpointer = "/body[1]/DocFragment[30]/body[1]/p[62]/text()[1].196";
+  resolved.percentage = 0.6994f;
+  resolved.spineIndex = 29;
+  resolved.visibleTextOffset = 8123;
+  resolved.remoteTimestamp = timestamp;
+  resolved.remoteDeviceId = deviceId;
+  return resolved;
+}
+
+}  // namespace
+
+// The whole point of the feature: read on the Kindle, then sync on the reader
+// and land where the Kindle left off.
+TEST(ProgressResolution, NewerRemoteWithAnExactPositionMovesTheReader) {
+  const auto remoteSide = landable(2000u, "kindle-7E0E4005");
+  EXPECT_EQ(decideProgressAction(remoteSide, 1000u, kThisDevice), ProgressAction::ApplyRemote);
+}
+
+// Reading done here after the last sync must not be undone by an older record.
+TEST(ProgressResolution, OlderRemoteLosesToLocalReading) {
+  const auto remoteSide = landable(1000u, "kindle-7E0E4005");
+  EXPECT_EQ(decideProgressAction(remoteSide, 2000u, kThisDevice), ProgressAction::PushLocal);
+}
+
+// Equal timestamps are not newer. Without this the reader would re-apply the
+// same position every sync.
+TEST(ProgressResolution, EqualTimestampsPushRatherThanApply) {
+  const auto remoteSide = landable(2000u, "kindle-7E0E4005");
+  EXPECT_EQ(decideProgressAction(remoteSide, 2000u, kThisDevice), ProgressAction::PushLocal);
+}
+
+// Our own push echoed back is not another device's reading, however new it is.
+TEST(ProgressResolution, ThisDevicesOwnRecordIsNeverApplied) {
+  const auto remoteSide = landable(9999u, kThisDevice);
+  EXPECT_EQ(decideProgressAction(remoteSide, 1000u, kThisDevice), ProgressAction::PushLocal);
+}
+
+// A fresh device has no reading to protect, so a usable remote wins.
+TEST(ProgressResolution, NoLocalReadingLetsTheRemoteWin) {
+  const auto remoteSide = landable(1u, "kindle-7E0E4005");
+  EXPECT_EQ(decideProgressAction(remoteSide, 0u, kThisDevice), ProgressAction::ApplyRemote);
+}
+
+// Newer elsewhere but percentage-only: there is nothing to land on, and
+// pushing would replace a real position with an older one.
+TEST(ProgressResolution, NewerButUnlandableHoldsBothSides) {
+  ResolvedProgress remoteSide;
+  remoteSide.source = ProgressSource::Percentage;
+  remoteSide.degraded = true;
+  remoteSide.percentage = 0.55f;
+  remoteSide.remoteTimestamp = 2000u;
+  remoteSide.remoteDeviceId = "kindle-7E0E4005";
+  EXPECT_EQ(decideProgressAction(remoteSide, 1000u, kThisDevice), ProgressAction::HoldBoth);
+}
+
+// An xpointer that parsed but resolved to no spine item is not landable either.
+TEST(ProgressResolution, ResolvedSourceWithoutASpineHoldsBothSides) {
+  auto remoteSide = landable(2000u, "kindle-7E0E4005");
+  remoteSide.spineIndex = -1;
+  EXPECT_EQ(decideProgressAction(remoteSide, 1000u, kThisDevice), ProgressAction::HoldBoth);
+}
+
+TEST(ProgressResolution, NothingUsableFallsBackToPushing) {
+  const ResolvedProgress nothing;
+  EXPECT_EQ(decideProgressAction(nothing, 0u, kThisDevice), ProgressAction::PushLocal);
+}
+
+// chooseRemoteProgress must carry identity through, or the caller cannot tell
+// whose record it is holding.
+TEST(ProgressResolution, CarriesRemoteIdentityThrough) {
+  const auto chosen = chooseRemoteProgress(remote("/body/DocFragment[2]/body/p[3]", 0.3f), true, 0.3f, 0.3f);
+  EXPECT_EQ(chosen.remoteDeviceId, "9F8E7D");
+  EXPECT_EQ(chosen.remoteTimestamp, 1787407272u);
 }
