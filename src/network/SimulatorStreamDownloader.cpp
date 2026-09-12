@@ -90,7 +90,8 @@ bookorbit::Error SimulatorStreamDownloader::downloadTo(const std::string& url, b
   curl_easy_cleanup(curl);
 
   std::fprintf(stderr, "[SIM][BORB] GET %s -> %ld (%u bytes%s)\n", url.c_str(), status,
-               static_cast<unsigned>(ctx.received), ctx.aborted ? ", aborted" : "");
+               static_cast<unsigned>(ctx.received),
+               ctx.aborted ? (writer.capExceeded() ? ", aborted: size cap exceeded" : ", aborted: write failed") : "");
 
   if (ctx.aborted) return {bookorbit::Status::Transport, static_cast<int>(status)};
   if (code != CURLE_OK) {

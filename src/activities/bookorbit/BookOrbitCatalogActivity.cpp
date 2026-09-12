@@ -217,7 +217,12 @@ void BookOrbitCatalogActivity::downloadSelected() {
   target += "." + (file->format.empty() ? std::string("epub") : file->format);
 
   BookOrbitFileSink sink;
-  bookorbit::PartFileWriter writer(sink, target, file->sizeBytes);
+  // The writer's third argument is a hard cap, not the expected size: passing
+  // sizeBytes verbatim aborts the transfer the instant it reaches the catalog's
+  // figure to the byte. maxBytesForExpected() is what turns an expectation into
+  // a cap, allowing 1.25x plus a megabyte of slack for a stale or approximate
+  // size while still refusing a runaway download.
+  bookorbit::PartFileWriter writer(sink, target, bookorbit::maxBytesForExpected(file->sizeBytes));
   if (!writer.begin()) {
     // Every failure path logs: a silent "Download failed" is impossible to
     // diagnose from the screen alone.

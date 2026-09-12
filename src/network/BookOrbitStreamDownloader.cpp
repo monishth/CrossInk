@@ -66,7 +66,10 @@ bookorbit::Error BookOrbitStreamDownloader::downloadTo(const std::string& url, b
     writer.abandon();
     // The cap is the only abort this layer raises on its own; a cancel comes
     // through the progress callback and is reported the same way.
-    LOG_ERR(kTag, "Download aborted after %u bytes", static_cast<unsigned>(writer.bytes()));
+    // "Aborted" alone hides whether the cap tripped or the card refused the
+    // write, which are different problems with different fixes.
+    LOG_ERR(kTag, "Download aborted after %u bytes (%s)", static_cast<unsigned>(writer.bytes()),
+            writer.capExceeded() ? "size cap exceeded" : "write failed");
     return {bookorbit::Status::ClientError, status};
   }
   if (status < 0) {
