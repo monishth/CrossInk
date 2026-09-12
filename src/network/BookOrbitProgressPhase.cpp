@@ -67,11 +67,38 @@ float BookOrbitProgressPhase::spinePercentage(const int spineIndex, const float 
   return epub->calculateSizeProgress(spineIndex, withinSpine);
 }
 
+std::string BookOrbitProgressPhase::outboundXPointer(const CrossPointPosition& position) const {
+  // The reader stores a visible-codepoint offset, which is exactly what the
+  // corpus-validated mapper consumes. ProgressMapper's own resolvers predate
+  // that work and only understand pre-2020 crengine DOM, so against a document
+  // any current KOReader wrote they resolve nothing and fall through to the
+  // synthetic "/body/DocFragment[N]/body" -- a position at the top of the
+  // chapter rather than where the reader is.
+  if (position.hasVisibleTextOffset && position.spineIndex >= 0) {
+    std::string xhtml;
+    if (readSpineItem(position.spineIndex, xhtml)) {
+      bookorbit::XPointer out;
+      if (bookorbit::resolveOffsetToXPointer(xhtml, position.visibleTextOffset, position.spineIndex, out)) {
+        return bookorbit::emitXPointer(out);
+      }
+      LOG_ERR(kModule, "offset %u did not resolve in spine %d", static_cast<unsigned>(position.visibleTextOffset),
+              position.spineIndex);
+    } else {
+      LOG_ERR(kModule, "could not read spine %d for the outbound position", position.spineIndex);
+    }
+  }
+
+  // No stored offset (an older progress file), or the offset did not resolve.
+  // The legacy mapper still handles paragraph and list anchors, so it remains
+  // the fallback rather than nothing.
+  return ProgressMapper::toKOReader(epub, position).xpath;
+}
+
 bool BookOrbitProgressPhase::push(const std::string& md5, const CrossPointPosition& position, const float percentage) {
   bookorbit::ProgressRecord record;
   record.document = md5;
   record.percentage = percentage;
-  record.progress = ProgressMapper::toKOReader(epub, position).xpath;
+  record.progress = outboundXPointer(position);
   record.device = deviceName;
   record.deviceId = deviceId;
   record.timestamp = nowUnix;

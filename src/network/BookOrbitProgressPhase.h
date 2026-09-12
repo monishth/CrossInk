@@ -36,6 +36,14 @@ class BookOrbitProgressPhase {
   bool push(const std::string& md5, const CrossPointPosition& position, float percentage);
 
   /**
+   * The outbound position for one saved reading location.
+   *
+   * Public so the mapping can be exercised without a network client; push()
+   * is just this plus a request.
+   */
+  std::string outboundXPointer(const CrossPointPosition& position) const;
+
+  /**
    * Fetches the remote position and resolves it. `out.source` reports whether
    * the landing is exact, a percentage fallback, or nothing usable; callers
    * must surface `out.jumpNeedsNotice` rather than jumping silently.
